@@ -137,7 +137,7 @@ def make_Analysis_config_from_yaml(config_file):
     ana_conf.flux_points.energy = {
         "min": conf["fit_min"]*un.TeV,
         "max": conf["fit_max"]*un.TeV,
-        "nbins":conf["fit_nbins"],
+        "nbins":conf["flux_nbins"],
     }
     ana_conf.flux_points.parameters = {}
     ana_conf.fit.fit_range = {
@@ -177,9 +177,10 @@ def setup_makers(config,src_pos,extra_conf):
     return bkg_maker,safe_mask_maker,dm_maker,scaffold
 
 def make_fluxpoints(analysis,conf):
+    print(f"Calculating flux points")
     energy_edges = np.logspace(np.log10(analysis.config.fit.fit_range.min.value),
                                np.log10(analysis.config.fit.fit_range.max.value),
-                               conf["fit_nbins"]) * un.TeV
+                               conf["flux_nbins"]+1) * un.TeV
 
     flux_points_est = (ge.FluxPointsEstimator(energy_edges=energy_edges,
                                         source=analysis.config.flux_points.source,
@@ -188,17 +189,17 @@ def make_fluxpoints(analysis,conf):
     flux_points = gds.FluxPointsDataset(models=analysis.models,data=flux_points_est)
     return flux_points,flux_points_est
 
-def save_stats(dataset,conf):
+def save_stats(dataset,conf,name):
     run_table = gds.Datasets(dataset).info_table(cumulative=False)
     info_table = gds.Datasets(dataset).info_table(cumulative=True)
     info_table["num runs"] = len(dataset)
 
     # ### Run by run table
-    stats_table_path = f'{conf["out_path"]}/{conf["source"]}_stats_byrun.ecsv'
+    stats_table_path = f'{conf["out_path"]}/{conf["source"]}_{name}_byrun.ecsv'
     print(f"Saving run-by-run stats table at {stats_table_path}")
     run_table.write( stats_table_path ,format="ascii.ecsv", overwrite=True)
 
-    stats_table_path = f'{conf["out_path"]}/{conf["source"]}_stats_cumul.ecsv'
+    stats_table_path = f'{conf["out_path"]}/{conf["source"]}_{name}_cumul.ecsv'
     print(f"Saving cumulative stats table at {stats_table_path}")
     info_table.write( stats_table_path ,format="ascii.ecsv", overwrite=True)
     return info_table,run_table
@@ -216,3 +217,11 @@ def save_fit_result(fit_result,ana_conf,conf,E_thr):
 
     fit_result[["name","value","error","unit"]].write(
           fit_result_path, format="ascii.ecsv",overwrite=True)
+
+def quick_print_stats(stats):
+    print(stats[[
+       "excess",
+       "sqrt_ts",
+       "ontime",
+       "counts_rate",
+       "background_rate"]][-1])
