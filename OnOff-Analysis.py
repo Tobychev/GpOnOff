@@ -19,7 +19,8 @@ def make_dataset(observations,ana_conf,src_pos,conf):
 
     # ## Reduce data
 
-    datasets = gds.Datasets()
+    full_data = gds.Datasets()
+    safe_data = gds.Datasets()
 
     print("Doing run:")
     for ob in observations:
@@ -27,14 +28,34 @@ def make_dataset(observations,ana_conf,src_pos,conf):
             scaffold.copy(name=str(ob.obs_id)), ob)
         print(ob.obs_id,end="... ",flush=True)
         dataset_on_off = bkg_maker.run(dataset,ob)
+        full_data.append(dataset_on_off.copy())
         try:
-            dataset_on_off = safe_mask_maker.run(dataset_on_off,ob)
+            safe_on_off = safe_mask_maker.run(dataset_on_off,ob)
         except:
             print(f"skipping {ob.obs_id}")
             continue
-        datasets.append(dataset_on_off)
+        safe_data.append(safe_on_off)
     print("done")
-    return datasets
+    return safe_data,full_data
+
+def resample_dataset(spectrum,conf,rebin):
+    fit_axis = gmap.MapAxis.from_energy_bounds(
+          conf["fit_min"], conf["fit_max"],
+          nbin=rebin,
+          unit="TeV",
+          name="energy")
+    if isinstance(spectrum,gds.Dataset):
+       return spectrum.resample_energy_axis(fit_axis,"energy")
+    # Note the plural-s
+    elif isinstance(spectrum,gds.Datasets):
+       rebinned = gds.Datasets()
+       for data in datasets:
+          spec = data.copy()
+          spec = spec.resample_energy_axis(fit_axis,data.name)
+          rebinned.append(spec)
+       return rebinned
+    else:
+       raise NotImplementedError(f"Not able to resample spectrum of type {type(spectrum)}")
 
 def calc_analytical_decorr(analysis):
    """
@@ -54,6 +75,14 @@ if __name__ == "__main__":
     parser.add_argument("config",
                        type=str,
                        help="Config file for the analysis to execute")
+    parser.add_argument("--skip-flux",
+          action='store_true',
+          default=False,
+          help = "Skip calculating fluxes (saves time)")
+    parser.add_argument("--debug",
+          action='store_true',
+          default=False,
+          help = "Create extra debug plots")
     args = parser.parse_args()
 
     # # Config
@@ -61,6 +90,7 @@ if __name__ == "__main__":
     ut.check_paths(conf)
     joint_fit = conf["joint_fit"]
     rebin = conf["optional"].get("fit_energy_bins",None)
+
     # ## Get obs
 
     observations, obs_ids = ut.get_exported_observations(
@@ -77,54 +107,53 @@ if __name__ == "__main__":
     if conf["optional"].get("dataset_file",None):
        print(f'reading {conf["optional"]["dataset_file"]}')
        datasets = gds.Datasets.read(conf["optional"]["dataset_file"])
+       full_data = gds.Datasets.read(
+             conf["optional"]["dataset_file"].replace(".yaml","_full.yaml"))
     else:
-       datasets =  make_dataset(observations,ana_conf,src_pos,conf)
+       datasets,full_data =  make_dataset(observations,ana_conf,src_pos,conf)
        datasets.write(f"{conf['out_path']}/Dataset/{conf['source']}_dataset.yaml",
+             overwrite=True)
+       full_data.write(f"{conf['out_path']}/Dataset/{conf['source']}_dataset_full.yaml",
              overwrite=True)
     nrun = len(datasets)
 
-
     # ## Statistics
-    info_table,run_table = ut.save_stats(datasets,conf,"stats")
-    quick_print_stats(info_table)
+    info_table,run_table = ut.save_stats(full_data,conf,"stats")
+    ut.quick_print_stats(info_table)
     vis.plot_source_stat(info_table,path=conf["out_path"],prefix=conf["source"])
 
-    # Check the binning, only sensible for the stacked dataset
-    spectrum  = datasets.stack_reduce()
-    vis.save_spectrum_diagnostic(spectrum,conf,"Spectrum_Raw_Binning")
-    Ethr_stacked = spectrum.energy_range_safe[0].data[0][0]
-    # Resample to new axis
-    rebinned = gds.Datasets()
-    if rebin:
-       print("Resampling!")
-       axis_config = rebin
-       fit_axis = gmap.MapAxis.from_energy_bounds(
-             rebin["min"], rebin["max"],
-             nbin=rebin["nbins"],
-             unit="TeV",
-             name="energy")
-       spectrum = spectrum.resample_energy_axis(fit_axis,"energy")
-       vis.save_spectrum_diagnostic(spectrum,conf,"Spectrum_Rebinned")
-       info_table,run_table = ut.save_stats(datasets,conf,"rebinned_stats")
+    # Stack
+    stacked_data  = datasets.stack_reduce()
+    Ethr_stacked = stacked_data.energy_range_safe[0].data[0][0]
 
-       if joint_fit:
-          for data in datasets:
-             spec = data.copy()
-             spec = spec.resample_energy_axis(fit_axis,data.name)
-             rebinned.append(spec)
-          print("Using resampled joint dataset")
-          spectrum = rebinned
-
-    elif os.path.exists(f'{conf["out_path"]}/{conf["source"]}_Spectrum_Rebinned.png'):
-       os.remove(f'{conf["out_path"]}/{conf["source"]}_Spectrum_Rebinned.png')
+    if args.debug:
+       vis.save_exp_corrected_counts(stacked_data,conf,"Initial")
+       vis.save_spectrum_diagnostic(stacked_data,conf,"Spectrum_Raw_Binning")
 
 
-    if joint_fit and not rebinned:
+    if joint_fit:
        print("Using joint dataset")
-       spectrum = datasets
+       Ethr = np.zeros(nrun)
+       joint_data = datasets
+       for idx,data in enumerate(joint_data):
+          Ethr[idx] = data.energy_range_safe[0].data[0][0]
+       if rebin:
+          joint_data = resample_dataset(joint_data,conf,rebin)
+          if args.debug:
+             rebinned = joint_data.stack_reduce()
+             vis.save_spectrum_diagnostic(rebinned,conf,"Spectrum_Rebinned")
+             vis.save_exp_corrected_counts(rebinned,conf,"Resampled")
+
+       spectrum = joint_data
+    else:
+       print("Using stacked dataset")
+       if rebin:
+          stacked_data = resample_dataset(stacked_data.copy(),conf,rebin)
+
+       spectrum = stacked_data
 
     # # Fit spectrum 
-    
+
     ana = ga.Analysis(ana_conf)
     ana.observations = observations
     ana.datasets = gds.Datasets(spectrum)
@@ -136,20 +165,11 @@ if __name__ == "__main__":
     tot_model = gmo.models.Models([gmo.models.SkyModel(spectral_model=pl_model,name=ana.config.flux_points.source)])
 
     ana.set_models(tot_model)
-    print("Fitting to get decorrelaion energy")
     ana.run_fit()
     ana.fit.covariance(ana.datasets)
     Edec = calc_analytical_decorr(ana)
-
-
-    print("Re-fitting at decorrelaion energy")
-
-    ana.models.parameters["index"].value = 2
-    ana.models.parameters["reference"].value = Edec
-    ana.models.parameters["amplitude"].value = 1e-12
-    ana.models.parameters["reference"].frozen = True
-    ana.run_fit()
-    ana.fit.covariance(ana.datasets)
+    print(f"Analytical decorrelation energy is {Edec}")
+    print("Rerun with this value if desired")
 
     fit_result = ana.fit_result.parameters.to_table()
     ut.save_fit_result(fit_result,ana,conf,Ethr_stacked)
@@ -160,9 +180,10 @@ if __name__ == "__main__":
        fit_type = "Stacked"
     vis.save_fit_residuals(ana.datasets[0],conf,f"PowerLaw{fit_type}Fit_Residuals")
 
-    flux_points,flux_points_est = ut.make_fluxpoints(ana,conf)
-    vis.save_flux_points(flux_points_est,conf,f"PowerLaw{fit_type}Fit_Likelihood")
-    vis.save_fluxpoint_fit(flux_points,conf,f"PowerLaw{fit_type}Fit")
+    if not args.skip_flux:
+       flux_points,flux_points_est = ut.make_fluxpoints(ana,conf)
+       vis.save_flux_points(flux_points_est,conf,f"PowerLaw{fit_type}Fit_Likelihood")
+       vis.save_fluxpoint_fit(flux_points,conf,f"PowerLaw{fit_type}Fit")
 
 
     shutil.copy(os.path.abspath(args.config),
@@ -172,7 +193,10 @@ if __name__ == "__main__":
        print("Joint fit result:")
     else:
        print("Stacked result:")
-    quick_print_stats(info_table)
+
+    ut.quick_print_stats(
+          gds.Datasets(datasets).info_table(
+             cumulative=True))
 
     print(f"Threshold {Ethr_stacked:.4f} \n")
     print(fit_result[[
