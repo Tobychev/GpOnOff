@@ -1,3 +1,4 @@
+import gammapy.maps as gmap
 import gammapy.visualization as gi
 import matplotlib.pyplot as pl
 
@@ -57,6 +58,19 @@ def plot_flux_points(flux_est):
     flux_est.plot_ts_profiles(ax=ax,sed_type="e2dnde")
     return fig
 
+def plot_exp_corrected_counts(spectrum):
+   reco_min,reco_max = spectrum.counts.geom.axes["energy"].bounds
+   reco_axis = gmap.MapAxis.from_energy_bounds(reco_min.value,reco_max.value,
+         nbin = spectrum.counts.geom.axes["energy"].nbin,
+         unit = str(reco_min.unit),
+         name = "energy_true")
+   cnt = spectrum.counts
+   exp = spectrum.exposure.resample_axis(reco_axis)
+   ene =  cnt.geom.axes.to_table()["ENERGY"].value
+   fig = pl.figure(figsize=(8,6))
+   pl.loglog(ene,(cnt.data/exp.data).flatten(),'-o')
+   return fig
+
 def save_flux_points(flux_est,conf,name):
     fig = plot_flux_points(flux_est)
     fig.suptitle(f"Powerlaw {conf['source']}")
@@ -90,3 +104,12 @@ def save_off_regions_per_run(dataset,excl_mask):
       gi.plot_spectrum_datasets_off_regions(ax=ax,datasets=[data])
       pl.savefig(f"OffRegions{data.name}.png")
       pl.close("all")
+      
+def save_exp_corrected_counts(spectrum,conf,name):
+   fig = plot_exp_corrected_counts(spectrum)
+   pl.xlabel("Reco energy")
+   pl.ylabel("counts/exposure")
+   pl.title(conf['source'])
+   fig.savefig(f'{conf["out_path"]}/{conf["source"]}_CountsByExp{name}.png')
+
+   pl.close("all")
