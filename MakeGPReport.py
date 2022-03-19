@@ -12,7 +12,8 @@ formatters = {
        }
 
 def make_report(loc):
-   rebinpic = None
+   oldbinpic = rebinpic = None
+   cbeini = cberes = None
 
    print(f"Making report for {loc}")
    for dir in os.listdir(loc):
@@ -90,8 +91,10 @@ def make_report(loc):
       row.cells[3].text = str(vals[3])
 
    doc.add_heading("Diagnostics",2)
-   doc.add_picture(f"{loc}/{oldbinpic}",width=docx.shared.Cm(4))
-   doc.add_picture(f"{loc}/{cbeini}",width=docx.shared.Cm(4))
+   if oldbinpic:
+      doc.add_picture(f"{loc}/{oldbinpic}",width=docx.shared.Cm(4))
+   if cbeini:
+      doc.add_picture(f"{loc}/{cbeini}",width=docx.shared.Cm(4))
    if rebinpic:
       doc.add_picture(f"{loc}/{rebinpic}",width=docx.shared.Cm(4))
       doc.add_picture(f"{loc}/{cberes}",width=docx.shared.Cm(4))
