@@ -99,6 +99,14 @@ def make_Analysis_config_from_yaml(config_file):
     else:
         et_ax = {"min":0.1,"max":100, "nbins": 72}
 
+    safe_mask = {}
+    if conf["optional"].get("safe_mask_method",None):
+       safe_mask["method"] = conf["optional"]["safe_mask_method"]
+       safe_mask["parameters"] = conf["optional"]["safe_mask_parameters"]
+    else:
+       safe_mask["method"] = "edisp-bias"
+       safe_mask["parameters"] = {"bias_percent":10.}
+
     ana_conf = ga.AnalysisConfig(**gp_conf)
 
     ana_conf.observations.datastore = conf["data_directory"]
@@ -107,9 +115,8 @@ def make_Analysis_config_from_yaml(config_file):
     ana_conf.datasets.containment_correction = conf["containment_correction"]
     ana_conf.datasets.map_selection = ["counts","exposure","edisp"]
     ana_conf.datasets.type = "1d"
-    ana_conf.datasets.safe_mask.methods = ["edisp-bias"]
-    ana_conf.datasets.safe_mask.parameters = {
-          "bias_percent":10.}
+    ana_conf.datasets.safe_mask.methods = [safe_mask["method"]]
+    ana_conf.datasets.safe_mask.parameters = safe_mask["parameters"]
     ana_conf.datasets.stack = True
 
     ana_conf.datasets.geom.wcs.skydir = {
@@ -192,7 +199,10 @@ def make_fluxpoints(analysis,conf):
 def save_stats(dataset,conf,name):
     run_table = gds.Datasets(dataset).info_table(cumulative=False)
     info_table = gds.Datasets(dataset).info_table(cumulative=True)
-    info_table["num runs"] = len(dataset)
+    try:
+       info_table["num runs"] = len(dataset)
+    except TypeError:
+       info_table["num runs"] = 1
 
     # ### Run by run table
     stats_table_path = f'{conf["out_path"]}/{conf["source"]}_{name}_byrun.ecsv'
@@ -213,7 +223,7 @@ def save_fit_result(fit_result,ana_conf,conf,E_thr):
     fit_result.add_row(
           ["","max_energy",ana_conf.config.fit.fit_range.max,"TeV",0.0,None,None,True,""])
     fit_result.add_row(
-          ["","treshold_energy",E_thr,"TeV",0.0,None,None,True,""])
+          ["","threshold_energy",E_thr,"TeV",0.0,None,None,True,""])
 
     fit_result[["name","value","error","unit"]].write(
           fit_result_path, format="ascii.ecsv",overwrite=True)
