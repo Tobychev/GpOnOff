@@ -1,7 +1,9 @@
 import gammapy.maps as gmap
 import gammapy.visualization as gi
+import gammapy.visualization.utils as gvu
 import matplotlib.pyplot as pl
 
+import utils as ut
 
 def plot_source_stat(info_table, path=None, prefix='', fig=None, ax_ex=None, ax_sig=None, **kwargs):
     """Plot source statistic for a 1d fit"""
@@ -38,6 +40,45 @@ def plot_source_stat(info_table, path=None, prefix='', fig=None, ax_ex=None, ax_
 
     return ax_ex, ax_sig
     
+def plot_contours(conf,ana,xpar,ypar,npoints=10):
+    pars = ut.get_parameter_dict( ana.models.parameters )
+    colors = ["m", "b", "c"]
+    conts = 3*[None]
+
+    fig,ax = pl.subplots(1,1,figsize=(8,6))
+    for sig in (1,2,3):
+       idx = sig-1
+       conts[idx] = ana.fit.stat_contour(ana.datasets,
+             x=xpar,
+             y=ypar,
+             sigma=sig,
+             numpoints=npoints)
+       gvu.plot_contour_line(ax,
+            conts[idx][xpar],
+            conts[idx][ypar],
+            color=colors[idx],
+            label=f"{sig}" + r"$\sigma$")
+     
+    ax.plot(pars[xpar]["value"],
+          pars[ypar]["value"],
+          marker="x",
+          markersize=8)
+
+    if conf["optional"].get("reference_point",False):
+       refp = conf["optional"]["reference_point"]
+
+       ax.plot(refp[xpar],
+             refp[ypar],
+             marker="d",
+             markersize=8,
+             label=refp["name"])
+
+    ax.set_xlabel(xpar+f" [{pars[xpar]['unit']}]")
+    ax.set_ylabel(ypar+f" [{pars[ypar]['unit']}]")
+    ax.set_title(f"{conf['source']}")
+    pl.legend()
+    return fig,conts
+
 def plot_spectrum_diagnostic(spectrum):
     fig = pl.figure(figsize=(16,4.5))
     axs = spectrum.peek(fig)
@@ -113,3 +154,4 @@ def save_exp_corrected_counts(spectrum,conf,name):
    fig.savefig(f'{conf["out_path"]}/{conf["source"]}_CountsByExp{name}.png')
 
    pl.close("all")
+
