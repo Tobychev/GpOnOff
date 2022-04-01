@@ -196,6 +196,25 @@ def make_fluxpoints(analysis,conf):
     flux_points = gds.FluxPointsDataset(models=analysis.models,data=flux_points_est)
     return flux_points,flux_points_est
 
+def resample_dataset(spectrum,conf,rebin):
+    fit_axis = gmap.MapAxis.from_energy_bounds(
+          conf["fit_min"], conf["fit_max"],
+          nbin=rebin,
+          unit="TeV",
+          name="energy")
+    if isinstance(spectrum,gds.Dataset):
+       return spectrum.resample_energy_axis(fit_axis,"energy")
+    # Note the plural-s
+    elif isinstance(spectrum,gds.Datasets):
+       rebinned = gds.Datasets()
+       for data in datasets:
+          spec = data.copy()
+          spec = spec.resample_energy_axis(fit_axis,data.name)
+          rebinned.append(spec)
+       return rebinned
+    else:
+       raise NotImplementedError(f"Not able to resample spectrum of type {type(spectrum)}")
+
 def save_stats(dataset,conf,name):
     run_table = gds.Datasets(dataset).info_table(cumulative=False)
     info_table = gds.Datasets(dataset).info_table(cumulative=True)
@@ -235,3 +254,9 @@ def quick_print_stats(stats):
        "ontime",
        "counts_rate",
        "background_rate"]][-1])
+
+def get_parameter_dict(parameters):
+   pars = {}
+   for itm in parameters.to_dict():
+      pars[itm["name"]] = itm
+   return pars

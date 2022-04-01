@@ -38,24 +38,6 @@ def make_dataset(observations,ana_conf,src_pos,conf):
     print("done")
     return safe_data,full_data
 
-def resample_dataset(spectrum,conf,rebin):
-    fit_axis = gmap.MapAxis.from_energy_bounds(
-          conf["fit_min"], conf["fit_max"],
-          nbin=rebin,
-          unit="TeV",
-          name="energy")
-    if isinstance(spectrum,gds.Dataset):
-       return spectrum.resample_energy_axis(fit_axis,"energy")
-    # Note the plural-s
-    elif isinstance(spectrum,gds.Datasets):
-       rebinned = gds.Datasets()
-       for data in datasets:
-          spec = data.copy()
-          spec = spec.resample_energy_axis(fit_axis,data.name)
-          rebinned.append(spec)
-       return rebinned
-    else:
-       raise NotImplementedError(f"Not able to resample spectrum of type {type(spectrum)}")
 
 def calc_analytical_decorr(analysis):
    """
@@ -138,7 +120,7 @@ if __name__ == "__main__":
        for idx,data in enumerate(joint_data):
           Ethr[idx] = data.energy_range_safe[0].data[0][0]
        if rebin:
-          joint_data = resample_dataset(joint_data,conf,rebin)
+          joint_data = ut.resample_dataset(joint_data,conf,rebin)
           if args.debug:
              rebinned = joint_data.stack_reduce()
              vis.save_spectrum_diagnostic(rebinned,conf,"Spectrum_Rebinned")
@@ -148,7 +130,7 @@ if __name__ == "__main__":
     else:
        print("Using stacked dataset")
        if rebin:
-          stacked_data = resample_dataset(stacked_data.copy(),conf,rebin)
+          stacked_data = ut.resample_dataset(stacked_data.copy(),conf,rebin)
 
        spectrum = stacked_data
 
@@ -190,9 +172,9 @@ if __name__ == "__main__":
                 f'{conf["out_path"]}/{conf["source"]}_config.yaml')
 
     if joint_fit:
-       print("Joint fit result:")
+       print("Joint fit spectrum stats:")
     else:
-       print("Stacked result:")
+       print("Stacked fit spectrum stats:")
 
     ut.quick_print_stats(
           gds.Datasets(datasets).info_table(
