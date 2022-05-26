@@ -38,15 +38,23 @@ def get_exported_observations(src_dir,include_only=None,official_prod=None):
         obs_ids.append(ds.obs_table["OBS_ID"].data)
 
     if include_only:
-        print("Only getting: ",include_only)
-        for idx,lst in enumerate(obs_ids):
-            obs_ids[idx] = [idx for idx in lst if idx in include_only]
+       if isinstance(include_only,str):
+          print("Only getting runs in: ",include_only)
+          included_runs = np.loadtxt(include_only,dtype=np.int64)
+          included_runs = included_runs[:,0]
+
+       if isinstance(include_only,list):
+           print("Only getting: ",include_only)
+           included_runs = include_only
+
+       for idx,lst in enumerate(obs_ids):
+          obs_ids[idx] = [idx for idx in lst if idx in included_runs]
 
     for idx,ds in enumerate(DSs):
-        for run in obs_ids[idx]:            
+        for run in obs_ids[idx]:
             obs_list.append(ds.obs(run))
         num_obs[data_dirs[idx][4:]] =  len(obs_ids[idx])
-    
+
     for key in num_obs.keys():
        print(f"Found {num_obs[key]} runs in runlist {key}")
     return gd.Observations(obs_list),obs_ids
