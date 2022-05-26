@@ -51,6 +51,7 @@ def calc_analytical_decorr(analysis):
    e_decorr *= analysis.models.parameters["reference"].value
    return e_decorr
 
+# Start of MAIN
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="Script to Run On Off analysis on gammapy formatted data")
@@ -74,7 +75,8 @@ if __name__ == "__main__":
     rebin = conf["optional"].get("fit_energy_bins",None)
 
     # ## Get obs
-
+    if args.debug:
+       print("Getting observations from {}".format(conf["data_directory"]))
     observations, obs_ids = ut.get_exported_observations(
              conf["data_directory"],
              conf["optional"].get("include_only",None),
@@ -92,7 +94,7 @@ if __name__ == "__main__":
        full_data = gds.Datasets.read(
              conf["optional"]["dataset_file"].replace(".yaml","_full.yaml"))
     else:
-       datasets,full_data =  make_dataset(observations,ana_conf,src_pos,conf)
+       datasets,full_data = make_dataset(observations,ana_conf,src_pos,conf)
        datasets.write(f"{conf['out_path']}/Dataset/{conf['source']}_dataset.yaml",
              overwrite=True)
        full_data.write(f"{conf['out_path']}/Dataset/{conf['source']}_dataset_full.yaml",
