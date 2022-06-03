@@ -49,6 +49,10 @@ if __name__ == "__main__":
        datasets = gds.Datasets.read(
              f"{conf['out_path']}/Dataset/{conf['source']}_dataset.yaml")
 
+    if conf["optional"].get("contour_points",None):
+       npoints = conf["optional"]["contour_points"]
+    else:
+       npoints = 10
    
     # # Fit spectrum 
 
@@ -58,5 +62,15 @@ if __name__ == "__main__":
 
     ana.run_fit()
     ana.fit.covariance(ana.datasets)
-    fig, cont = vis.plot_contours(conf,ana,"amplitude","index")
+    fig, cont = vis.plot_contours(conf,ana,"amplitude","index",npoints)
+    print(f"Saving countours to: \n"
+          f'{conf["out_path"]}/{conf["source"]}_Countours.png')
     fig.savefig(f'{conf["out_path"]}/{conf["source"]}_Countours.png')
+
+    fit_result = ana.fit_result.parameters.to_table()
+    print(fit_result[[
+       "name",
+       "value",
+       "error",
+       "unit",]])
+    print()
