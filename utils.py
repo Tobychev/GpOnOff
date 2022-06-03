@@ -223,13 +223,15 @@ def resample_dataset(spectrum,conf,rebin):
     else:
        raise NotImplementedError(f"Not able to resample spectrum of type {type(spectrum)}")
 
-def save_stats(dataset,conf,name):
+def save_stats(dataset,conf,zenith,name):
     run_table = gds.Datasets(dataset).info_table(cumulative=False)
     info_table = gds.Datasets(dataset).info_table(cumulative=True)
     try:
        info_table["num runs"] = len(dataset)
     except TypeError:
        info_table["num runs"] = 1
+    run_table.add_column(zenith,name="zenith")
+    info_table.add_column(zenith,name="zenith")
 
     # ### Run by run table
     stats_table_path = f'{conf["out_path"]}/{conf["source"]}_{name}_byrun.ecsv'
