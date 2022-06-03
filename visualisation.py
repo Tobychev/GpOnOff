@@ -48,17 +48,20 @@ def plot_contours(conf,ana,xpar,ypar,npoints=10):
     fig,ax = pl.subplots(1,1,figsize=(8,6))
     for sig in (1,2,3):
        idx = sig-1
-       conts[idx] = ana.fit.stat_contour(ana.datasets,
-             x=xpar,
-             y=ypar,
-             sigma=sig,
-             numpoints=npoints)
-       gvu.plot_contour_line(ax,
-            conts[idx][xpar],
-            conts[idx][ypar],
-            color=colors[idx],
-            label=f"{sig}" + r"$\sigma$")
-     
+       try:
+          conts[idx] = ana.fit.stat_contour(ana.datasets,
+                x=xpar,
+                y=ypar,
+                sigma=sig,
+                numpoints=npoints)
+          gvu.plot_contour_line(ax,
+               conts[idx][xpar],
+               conts[idx][ypar],
+               color=colors[idx],
+               label=f"{sig}" + r"$\sigma$")
+       except:
+          print(f"Failed creating countour {sig} using {npoints} points")
+
     ax.plot(pars[xpar]["value"],
           pars[ypar]["value"],
           marker="x",
