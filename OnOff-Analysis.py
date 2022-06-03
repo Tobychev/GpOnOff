@@ -101,8 +101,11 @@ if __name__ == "__main__":
              overwrite=True)
     nrun = len(datasets)
 
+    zens = np.zeros(len(observations))
+    for idx,obs in enumerate(observations):
+       zens[idx] = obs.pointing_zen.value
     # ## Statistics
-    info_table,run_table = ut.save_stats(full_data,conf,"stats")
+    info_table,run_table = ut.save_stats(full_data,conf,zens,"stats")
     ut.quick_print_stats(info_table)
     vis.plot_source_stat(info_table,path=conf["out_path"],prefix=conf["source"])
 
