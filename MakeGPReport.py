@@ -2,6 +2,7 @@
 import argparse
 import astropy.table as at
 import docx
+import numpy as np
 import os
 formatters = {
       "counts_off": "{:>5d}".format,
@@ -13,7 +14,7 @@ formatters = {
 
 def make_report(loc):
    oldbinpic = rebinpic = None
-   cbeini = cberes = None
+   cbeini = cberes = cont = None
 
    print(f"Making report for {loc}")
    for dir in os.listdir(loc):
@@ -41,6 +42,8 @@ def make_report(loc):
             cbeini = dir
          if dir.endswith("CountsByExpResampled.png"):
             cberes = dir
+         if dir.endswith("Countours.png"):
+            cont = dir
       elif dir.endswith("yaml"):
          conf = dir
    if not "statpic" in locals():
@@ -53,22 +56,37 @@ def make_report(loc):
    doc.add_heading("Stats",1)
    doc.add_picture(f"{loc}/{statpic}",width=docx.shared.Cm(4))
 
-   tot_stat = cml[-1]
-   nrows = len(tot_stat.colnames) 
-   table1 = doc.add_table(rows=nrows,cols=2)
+   if cml:
+      zens=  cml["zenith"]
+      zen_mean = zens.mean()
+      zen_med,zen_sty = np.percentile(zens,[50,75])
+      tot_stat = cml[-1]
+      nrows = len(tot_stat.colnames)+2
+      #The above leads to euse the by run zenit spot
+      table1 = doc.add_table(rows=nrows,cols=2)
 
-   for idx,val in enumerate(tot_stat):
-      name = tot_stat.colnames[idx]
-      row = table1.rows[idx]
-      if name == "name":
-         row.cells[0].text = "Name"
-         row.cells[1].text = "Value"
-         continue
-      frmt = formatters.get(name,"{:8.4f}".format)
-      print(name,frmt(val))
-      row.cells[0].text = name
-      row.cells[1].text = str(frmt(val))
-
+      for idx,val in enumerate(tot_stat):
+         name = tot_stat.colnames[idx]
+         row = table1.rows[idx]
+         if name == "name":
+            row.cells[0].text = "Name"
+            row.cells[1].text = "Value"
+            continue
+         frmt = formatters.get(name,"{:8.4f}".format)
+         print(name,frmt(val))
+         row.cells[0].text = name
+         row.cells[1].text = str(frmt(val))
+      row_med = table1.rows[-3]
+      row_med.cells[0].text = "Median Zenith"
+      row_med.cells[1].text = f"{zen_med:.3f}"
+      row_mean = table1.rows[-2]
+      row_mean.cells[0].text = "Mean Zenith"
+      row_mean.cells[1].text = f"{zen_mean:.3f}"
+      row_sty = table1.rows[-1]
+      row_sty.cells[0].text = "Zenith 75%"
+      row_sty.cells[1].text = f"{zen_sty:.3f}"
+   else:
+      raise ValueError(f"Did not find a stats file in {loc}")
 
    doc.add_heading("Spectral Fit",1)
    doc.add_picture(f"{loc}/{fitpic}",width=docx.shared.Cm(4))
@@ -98,6 +116,8 @@ def make_report(loc):
    if rebinpic:
       doc.add_picture(f"{loc}/{rebinpic}",width=docx.shared.Cm(4))
       doc.add_picture(f"{loc}/{cberes}",width=docx.shared.Cm(4))
+   if cont:
+      doc.add_picture(f"{loc}/{cont}",width=docx.shared.Cm(4))
 
    doc.add_picture(f"{loc}/{respic}",width=docx.shared.Cm(4))
    doc.add_picture(f"{loc}/{likpic}",width=docx.shared.Cm(4))
