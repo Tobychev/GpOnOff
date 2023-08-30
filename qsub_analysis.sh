@@ -15,5 +15,10 @@ outdir=$(printf "%s/GP_Result" "$srcname")
 reportname=$(printf "%s-%s" "$srcname" "$startdate")
 printf "Running analysis %s" "$conffile"
 python gplib/OnOff-Analysis.py "$conffile" --debug
+retVal=$?
+if [ $retVal -ne 0 ]; then
+       echo "Error: OnOff analysis failed"
+       exit 1
+fi
 python gplib/SpectrumFit.py "$conffile"
 python gplib/MakeGPReport.py "$outdir" "$reportname"

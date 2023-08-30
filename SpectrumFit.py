@@ -15,10 +15,12 @@ import utils as ut
 import visualisation as vis
 
 def make_model(conf,kind="PL"):
+   index = conf["optional"].get("start_index",2)
+   ampl = conf["optional"].get("start_amplitude",1)
    if kind == "PL":
      model = gmo.models.PowerLawSpectralModel(
-          index=2,
-          amplitude="1e-12 TeV-1 cm-2 s-1",
+          index=index,
+          amplitude=f"{ampl}e-12 TeV-1 cm-2 s-1",
           reference=conf["fit_E0"] * un.TeV,
       )
    else:
@@ -53,11 +55,18 @@ if __name__ == "__main__":
        npoints = conf["optional"]["contour_points"]
     else:
        npoints = 10
-   
+
+
     # # Fit spectrum 
 
     ana = ga.Analysis(ana_conf)
-    ana.datasets = gds.Datasets(datasets)
+    if conf["joint_fit"]:       
+       ana.datasets = gds.Datasets(datasets)
+    else:
+       print("Stacking dataset")
+       datasets = datasets.stack_reduce()
+       ana.datasets = gds.Datasets(datasets)
+
     ana.set_models(make_model(conf))
 
     ana.run_fit()
@@ -74,3 +83,4 @@ if __name__ == "__main__":
        "error",
        "unit",]])
     print()
+    print(cont)

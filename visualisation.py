@@ -2,6 +2,7 @@ import gammapy.maps as gmap
 import gammapy.visualization as gi
 import gammapy.visualization.utils as gvu
 import matplotlib.pyplot as pl
+import numpy as np
 
 import utils as ut
 
@@ -40,7 +41,7 @@ def plot_source_stat(info_table, path=None, prefix='', fig=None, ax_ex=None, ax_
 
     return ax_ex, ax_sig
     
-def plot_contours(conf,ana,xpar,ypar,npoints=10):
+def plot_contours(conf,ana,xpar,ypar,npoints=12):
     pars = ut.get_parameter_dict( ana.models.parameters )
     colors = ["m", "b", "c"]
     conts = 3*[None]
@@ -120,13 +121,44 @@ def save_flux_points(flux_est,conf,name):
     fig.suptitle(f"Powerlaw {conf['source']}")
     fig.savefig(f'{conf["out_path"]}/{conf["source"]}_{name}.png')
     pl.close("all")
+    # ### Run by run table
+    flux_table_path = f'{conf["out_path"]}/{conf["source"]}_{name}_flux.ecsv'
+    print(f"Saving flux point table at {flux_table_path}")
+    flux_est.to_table().write( flux_table_path ,format="ascii.ecsv", overwrite=True)
 
 def save_fluxpoint_fit(flux_points,conf,name):
-    ax = flux_points.plot_fit()
+    pl.close("all")
+    axs = flux_points.plot_fit()
     fig = pl.gcf()
+    emin = np.round(
+          flux_points.data["energy_min"][0].to("TeV"),
+          decimals=1).value
+    xlim = axs[0].get_xlim()
+    xtics = axs[0].get_xticks()
+    sel = xtics > emin
+
+    keep_idx = len(sel) -sum(sel)
+    xtics = xtics[(keep_idx-1):]
+    xtics[0] =  emin
+
+    xlabs = [str(itm) for itm in xtics]
+    xlim = (emin,conf["fit_max"])
+    axs[0].set_xticks(xtics)
+    axs[1].set_xticks(xtics)
+    axs[0].set_xticklabels(xlabs)
+    axs[1].set_xticklabels(xlabs)
+    axs[0].set_xlim(xlim)
+    axs[1].set_xlim(xlim)
+
+    axs[0].text(0.5,0.5,"Preliminary",
+          size=50,rotation=30,ha="center",va="center",
+          alpha = 0.3,zorder=1000,
+          transform=axs[0].transAxes)
+
+
     fig.suptitle(f"Powerlaw {conf['source']}")
     fig.savefig(f'{conf["out_path"]}/{conf["source"]}_{name}.png')
-    pl.close("all")
+    
 
 def save_fit_residuals(dataset,conf,name):
     fig = plot_fit_residuals(dataset)

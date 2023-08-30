@@ -10,8 +10,8 @@ import os
 import shutil
 import yaml
 
-import utils as ut
-import visualisation as vis
+import gplib.utils as ut
+import gplib.visualisation as vis
 
 def make_dataset(observations,ana_conf,src_pos,conf):
     # ## Setup makers
@@ -28,7 +28,8 @@ def make_dataset(observations,ana_conf,src_pos,conf):
             scaffold.copy(name=str(ob.obs_id)), ob)
         print(ob.obs_id,end="... ",flush=True)
         dataset_on_off = bkg_maker.run(dataset,ob)
-        full_data.append(dataset_on_off.copy())
+
+        full_data.append(dataset_on_off.copy(name=f"{ob.obs_id}_full"))
         try:
             safe_on_off = safe_mask_maker.run(dataset_on_off,ob)
         except:

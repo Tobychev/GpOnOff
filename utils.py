@@ -12,7 +12,7 @@ import regions as reg
 import os
 import shutil
 import yaml
-
+import pathlib as pt
 
 def print_diagnostics(run_table):
    tab = run_table.copy()
@@ -91,21 +91,13 @@ def make_Analysis_config_from_yaml(config_file):
                              conf["source_pos"]["dec"],
                              unit="deg",
                              frame=conf["source_pos"]["frame"])
-    if "optional" in d:
-      conf["optional"] = d["optional"]
-    else:
-      conf["optional"] = {}
-    gp_conf = d.get("gammapy_arguments")
-    if not gp_conf:
-        gp_conf = {}
-    if conf["optional"].get("energy_axis",None):
-        e_ax = conf["optional"]["energy_axis"]
-    else:
-        e_ax = {"min":0.1,"max":100, "nbins": 72}
-    if conf["optional"].get("energy_axis_true",None):
-        et_ax = conf["optional"]["energy_axis_true"]
-    else:
-        et_ax = {"min":0.1,"max":100, "nbins": 72}
+
+    conf["optional"] = d.get("optional",{})
+    conf["datasets"] = d.get("datasets",{})
+    gp_conf = d.get("gammapy_arguments",{})
+
+    e_ax =  conf["optional"].get("energy_axis", {"min":0.25,"max":100, "nbins": 72})
+    et_ax =  conf["optional"].get("energy_axis_true", {"min":0.1,"max":120, "nbins": 200})
 
     safe_mask = {}
     if conf["optional"].get("safe_mask_method",None):
@@ -165,8 +157,8 @@ def make_Analysis_config_from_yaml(config_file):
 def check_paths(conf):
     if not os.path.isdir(conf["data_directory"]):
         raise ValueError(f"Could not find directory {conf['data_directory']}")
-    if not os.path.isdir(conf["out_path"]):
-        os.mkdir(conf["out_path"])
+    outdir = pt.Path(conf["out_path"])
+    outdir.mkdir(parents=True,exist_ok=True)
 
 def setup_makers(config,src_pos,extra_conf):
    
@@ -190,6 +182,33 @@ def setup_makers(config,src_pos,extra_conf):
                                        **config.datasets.safe_mask.parameters)
 
     return bkg_maker,safe_mask_maker,dm_maker,scaffold
+
+
+def make_dataset(observations,ana_conf,src_pos,conf):
+    # ## Setup makers
+    bkg_maker,safe_mask_maker,dm_maker,scaffold = setup_makers(ana_conf,src_pos,conf)
+
+    # ## Reduce data
+
+    full_data = gds.Datasets()
+    safe_data = gds.Datasets()
+
+    print("Doing run:")
+    for ob in observations:
+        dataset = dm_maker.run(
+            scaffold.copy(name=str(ob.obs_id)), ob)
+        print(ob.obs_id,end="... ",flush=True)
+        dataset_on_off = bkg_maker.run(dataset,ob)
+
+        full_data.append(dataset_on_off.copy(name=f"{ob.obs_id}_full"))
+        try:
+            safe_on_off = safe_mask_maker.run(dataset_on_off,ob)
+        except:
+            print(f"skipping {ob.obs_id}")
+            continue
+        safe_data.append(safe_on_off)
+    print("done")
+    return safe_data,full_data
 
 def make_fluxpoints(analysis,conf):
     print(f"Calculating flux points")
@@ -248,11 +267,11 @@ def save_fit_result(fit_result,ana_conf,conf,E_thr):
     fit_result_path = f'{conf["out_path"]}/{conf["source"]}_fit_result.ecsv'
     print(f"Saving fit result table at {fit_result_path}")
     fit_result.add_row(
-          ["","min_energy",ana_conf.config.fit.fit_range.min,"TeV",0.0,None,None,True,""])
+          ["","min_energy",ana_conf.config.fit.fit_range.min,"TeV",0.0,None,None,True,"",""])
     fit_result.add_row(
-          ["","max_energy",ana_conf.config.fit.fit_range.max,"TeV",0.0,None,None,True,""])
+          ["","max_energy",ana_conf.config.fit.fit_range.max,"TeV",0.0,None,None,True,"",""])
     fit_result.add_row(
-          ["","threshold_energy",E_thr,"TeV",0.0,None,None,True,""])
+          ["","threshold_energy",E_thr,"TeV",0.0,None,None,True,"",""])
 
     fit_result[["name","value","error","unit"]].write(
           fit_result_path, format="ascii.ecsv",overwrite=True)
@@ -270,3 +289,15 @@ def get_parameter_dict(parameters):
    for itm in parameters.to_dict():
       pars[itm["name"]] = itm
    return pars
+
+def calc_analytical_decorr(analysis):
+   """
+   Lifted from Manuel Meyer's code
+
+   Compute decorrelation energy analytically after initial fit
+   and refit. This only works for a power law. See Eq. 3 in https://arxiv.org/pdf/0911.4252.pdf
+   """
+   covar = analysis.models.covariance.get_subcovariance(['index', 'amplitude', 'reference']).data
+   e_decorr = np.exp(covar[0,1] / covar[0,0] / analysis.models.parameters["amplitude"].value)
+   e_decorr *= analysis.models.parameters["reference"].value
+   return e_decorr
