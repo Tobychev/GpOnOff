@@ -34,6 +34,38 @@ def split_runlist(runlist):
 
    return {"hess1":hess1,"hess2":hess2,"hess1u":hess1u}
 
+def flatten_obs_dict(obs_dict):
+   obs = []
+   for key in obs_dict:
+      obs.append(obs_dict[key])
+
+   return obs
+
+def make_dataset(observations,ana_conf,src_pos,conf):
+    # ## Setup makers
+    bkg_maker,safe_mask_maker,spec_maker,scaffold = ut.setup_makers(ana_conf,src_pos,conf)
+
+    # ## Reduce data
+
+    full_data = gds.Datasets()
+    safe_data = gds.Datasets()
+
+    print("Doing run:")
+    for ob in observations:
+        dataset = spec_maker.run(
+            scaffold.copy(name=str(ob.obs_id)), ob)
+        print(ob.obs_id,end="... ",flush=True)
+        dataset_on_off = bkg_maker.run(dataset,ob)
+
+        full_data.append(dataset_on_off.copy(name=f"{ob.obs_id}_full"))
+        try:
+            safe_on_off = safe_mask_maker.run(dataset_on_off,ob)
+        except:
+            print(f"skipping {ob.obs_id}")
+            continue
+        safe_data.append(safe_on_off)
+    print("done")
+    return safe_data,full_data
 
 def get_listed_observations(data_dir,run_list):
 
@@ -88,60 +120,73 @@ def get_listed_hd_fr_observations(runlist,cut_config,prod="Prod23_Calib0834"):
 # Start of MAIN
 if __name__ == "__main__":
 
-    parser = argparse.ArgumentParser(description="Script to Run On Off analysis on gammapy formatted data")
-    parser.add_argument("config",
-                       type=str,
-                       help="Config file for the analysis to execute")
-    args = parser.parse_args()
+   parser = argparse.ArgumentParser(description="Script to Run On Off analysis on gammapy formatted data")
+   parser.add_argument("config",
+                      type=str,
+                      help="Config file for the analysis to execute")
+   args = parser.parse_args()
 
-    # # Config
-    src_ana_conf, src_pos, conf = ut.make_Analysis_config_from_yaml(args.config)
-    ut.check_paths(conf)
-    rebin = conf["optional"].get("fit_energy_bins",None)
-    root_dir = pt.Path(conf["data_directory"]) / conf["optional"]["production"]
-    out_dir = pt.Path(conf["out_path"])
+   # # Config
+   src_ana_conf, src_pos, conf = ut.make_Analysis_config_from_yaml(args.config)
+   ut.check_paths(conf)
+   rebin = conf["optional"].get("fit_energy_bins",None)
+   root_dir = pt.Path(conf["data_directory"]) / conf["optional"]["production"]
+   out_dir = pt.Path(conf["out_path"])
 
-    if "hap-hd" in conf["data_directory"]:
-       obs_dict = get_listed_hap_observations(conf["optional"]["runlist"],conf["optional"]["cut_conf"])
-       datastore = "{root_dir}/{key}/{cut_conf}"
+   if "hap-hd" in conf["data_directory"]:
+      obs_dict = get_listed_hap_observations(conf["optional"]["runlist"],conf["optional"]["cut_conf"])
+      datastore = "{root_dir}/{key}/{cut_conf}"
 
-    if "hap-fr" in conf["data_directory"]:
-       obs_dict = get_listed_hd_fr_observations(conf["optional"]["runlist"],conf["optional"]["cut_conf"])
-       datastore = "{root_dir}/{cut_conf}"
+   if "hap-fr" in conf["data_directory"]:
+      obs_dict = get_listed_hd_fr_observations(conf["optional"]["runlist"],conf["optional"]["cut_conf"])
+      datastore = "{root_dir}/{cut_conf}"
 
-    for key in obs_dict:
-        obs_objs, obs_tab = obs_dict[key]
-        ana_conf = src_ana_conf.copy()
+   bkg_maker,safe_mask_maker,spec_maker,scaffold = ut.setup_makers(ana_conf,src_pos,conf)
 
-        out_loc = out_dir / key
-        out_loc.mkdir(parents=True,exist_ok=True)
-        ana_conf.general.datasets_file = out_loc / f"{conf['source']}_{key}_dataset.yaml"
+   # ## Reduce data
+   full_data = gds.Datasets()
+   safe_data = gds.Datasets()
 
-        ana_conf.observations.obs_ids = [itm.obs_id for itm in obs_objs]
-        ana_conf.observations.datastore = pt.Path(
-           datastore.format(
-              root_dir= root_dir,
-              key= key,
-              cut_conf = conf["optional"]["cut_conf"]))
-
-        ana_conf.observations.required_irf = ["aeff","edisp","psf", "bkg"]
-
-        ana_conf.datasets.map_selection = ["counts","exposure","edisp", "background"]
-        ana_conf.datasets.background.method = "reflected"
-
-        print(ana_conf)
-        ana = ga.Analysis(ana_conf)
-        ana.get_observations()
-        ana.get_datasets()
-
-        info = ana.datasets.info_table()
+   obs_list = flatten_obs_dict(obs_dict)
+   data = []
+   for lst in obs_list:
+      safe_set, full_set = make_dataset(lst,ana_conf,src_pos,conf)
+      data.append(safe_set,full_set.stack_reduce())
 
 
-        ana.config.write(out_loc / f"{key}_conf.log", overwrite = True)
-        info.write(out_loc / f"{key}_stats.csv", format = "ascii.ecsv", overwrite=True)
-        ana.write_datasets()
-        print(
-          f"Tobs={info['livetime'].to('h')[0]:.1f} Excess={info['excess'].value[0]:.1f} \
-                Significance={info['sqrt_ts'][0]:.2f}")
+   for key in obs_dict:
+       obs_objs, obs_tab = obs_dict[key]
+       ana_conf = src_ana_conf.copy()
+
+       out_loc = out_dir / key
+       out_loc.mkdir(parents=True,exist_ok=True)
+       ana_conf.general.datasets_file = out_loc / f"{conf['source']}_{key}_dataset.yaml"
+
+       ana_conf.observations.obs_ids = [itm.obs_id for itm in obs_objs]
+       ana_conf.observations.datastore = pt.Path(
+          datastore.format(
+             root_dir= root_dir,
+             key= key,
+             cut_conf = conf["optional"]["cut_conf"]))
+
+       ana_conf.observations.required_irf = ["aeff","edisp","psf", "bkg"]
+
+       ana_conf.datasets.map_selection = ["counts","exposure","edisp", "background"]
+       ana_conf.datasets.background.method = "reflected"
+
+       print(ana_conf)
+       ana = ga.Analysis(ana_conf)
+       ana.get_observations()
+       ana.get_datasets()
+
+       info = ana.datasets.info_table()
+
+
+       ana.config.write(out_loc / f"{key}_conf.log", overwrite = True)
+       info.write(out_loc / f"{key}_stats.csv", format = "ascii.ecsv", overwrite=True)
+       ana.write_datasets()
+       print(
+         f"Tobs={info['livetime'].to('h')[0]:.1f} Excess={info['excess'].value[0]:.1f} \
+               Significance={info['sqrt_ts'][0]:.2f}")
 
 
