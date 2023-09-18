@@ -56,7 +56,7 @@ def get_listed_observations(data_dir,run_list):
             run_list.remove(obs_id)
       obs_lists.append(obs_list)
 
-   missing = set(tel_ids["OBS_ID"]) - set(run_list)
+   missing = set(tel_ids["OBS_ID"])-set(props["OBS_ID"])
    if len(missing) > 0:
        print("WARNING: Some runs were not found:")
        print(missing)
