@@ -3,6 +3,7 @@ import argparse
 import os
 import pathlib as pt
 
+import astropy.table as tab
 import gammapy.analysis as ga
 import gammapy.data as gda
 import gammapy.datasets as gds
@@ -39,7 +40,10 @@ def get_listed_observations(data_dir,run_list):
    store = gda.DataStore.from_dir(data_dir)
    obs_lists = []
 
-   props = store.obs_table.select_obs_id(run_list)
+   tel_ids = tab.Table([run_list],names=["OBS_ID"])
+   tel_ids.add_idex("OBS_ID")
+
+   props = tab.join(store.obs_table,tel_ids,join_type="inner")
    props["ZEN_BIN"] = np.digitize(props["ZEN_PNT"],ZEN_BINS)
 
    for group in props.group_by("ZEN_BIN").groups:
@@ -51,6 +55,11 @@ def get_listed_observations(data_dir,run_list):
             print(f"could not find {obs_id} in {data_dir}, dropping run")
             run_list.remove(obs_id)
       obs_lists.append(obs_list)
+
+   missing = set(tel_ids["OBS_ID"]) - set(run_list)
+   if len(missing) > 0:
+       print("WARNING: Some runs were not found:")
+       print(missing)
    return obs_lists,props
 
 
