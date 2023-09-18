@@ -6,6 +6,7 @@ import pathlib as pt
 import gammapy.analysis as ga
 import gammapy.data as gda
 import gammapy.datasets as gds
+import numpy as np
 
 import utils as ut
 import visualisation as vis
@@ -13,8 +14,10 @@ import visualisation as vis
 HESS1_END = 83490
 HESS2_END = 123799
 
+ZEN_BINS = [0., 10., 20., 30., 40., 45., 50., 55., 60., 63., 65.,]
+
 def split_runlist(runlist):
-   with open(runlist,"r") as fil:      
+   with open(runlist,"r") as fil:
       runlines = fil.readlines()
    hess1 = []
    hess2 = []
@@ -34,21 +37,21 @@ def split_runlist(runlist):
 def get_listed_observations(data_dir,run_list):
 
    store = gda.DataStore.from_dir(data_dir)
-   obs_list = []
-   
-   for obs_id in run_list:
-      try:
-         obs_list.append(store.obs(obs_id))
-      except ValueError:
-         print(f"could not find {obs_id} in {data_dir}, dropping run")
-         run_list.remove(obs_id)
-   store.obs_table.add_index("OBS_ID")
-   try:
-      props = store.obs_table.loc[run_list]
-   except KeyError as err:
-      print(f"Problem with key: {err}")
-      props = {}
-   return obs_list,props
+   obs_lists = []
+
+   props = store.obs_table.select_obs_id(run_list)
+   props["ZEN_BIN"] = np.digitize(props["ZEN_PNT"],ZEN_BINS)
+
+   for group in props.group_by("ZEN_BIN"):
+      obs_list = []
+      for obs_id in group["OBS_ID"]:
+         try:
+            obs_list.append(store.obs(obs_id))
+         except ValueError:
+            print(f"could not find {obs_id} in {data_dir}, dropping run")
+            run_list.remove(obs_id)
+      obs_lists.append(obs_list)
+   return obs_lists,props
 
 
 def get_listed_hap_observations(runlist,cut_config,prod="fits_prod05"):
@@ -60,7 +63,7 @@ def get_listed_hap_observations(runlist,cut_config,prod="fits_prod05"):
    for key in lists:
       if len(lists[key]) > 0:
          data_dir = root_dir / key / cut_config
-         obs[key] = get_listed_observations(data_dir, lists[key]) 
+         obs[key] = get_listed_observations(data_dir, lists[key])
 
    return obs
 
@@ -71,7 +74,7 @@ def get_listed_hd_fr_observations(runlist,cut_config,prod="Prod23_Calib0834"):
    runs = []
    for key in lists:
       runs += lists[key]
-   
+
    data_dir = pt.Path("/home/hfm/hess/fits/hap-fr/") / prod / cut_config
    obs["hap-fr"] = get_listed_observations(data_dir, runs)
    return obs
@@ -89,7 +92,7 @@ if __name__ == "__main__":
     src_ana_conf, src_pos, conf = ut.make_Analysis_config_from_yaml(args.config)
     ut.check_paths(conf)
     rebin = conf["optional"].get("fit_energy_bins",None)
-    root_dir = pt.Path(conf["data_directory"]) / conf["optional"]["production"] 
+    root_dir = pt.Path(conf["data_directory"]) / conf["optional"]["production"]
     out_dir = pt.Path(conf["out_path"])
 
     if "hap-hd" in conf["data_directory"]:
@@ -106,7 +109,7 @@ if __name__ == "__main__":
 
         out_loc = out_dir / key
         out_loc.mkdir(parents=True,exist_ok=True)
-        ana_conf.general.datasets_file = out_loc / f"{conf['source']}_{key}_dataset.yaml" 
+        ana_conf.general.datasets_file = out_loc / f"{conf['source']}_{key}_dataset.yaml"
 
         ana_conf.observations.obs_ids = [itm.obs_id for itm in obs_objs]
         ana_conf.observations.datastore = pt.Path(
