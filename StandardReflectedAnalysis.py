@@ -41,7 +41,7 @@ def get_listed_observations(data_dir,run_list):
    obs_lists = []
 
    tel_ids = tab.Table([run_list],names=["OBS_ID"])
-   tel_ids.add_idex("OBS_ID")
+   tel_ids.add_index("OBS_ID")
 
    props = tab.join(store.obs_table,tel_ids,join_type="inner")
    props["ZEN_BIN"] = np.digitize(props["ZEN_PNT"],ZEN_BINS)
@@ -49,17 +49,14 @@ def get_listed_observations(data_dir,run_list):
    for group in props.group_by("ZEN_BIN").groups:
       obs_list = []
       for obs_id in group["OBS_ID"]:
-         try:
             obs_list.append(store.obs(obs_id))
-         except ValueError:
-            print(f"could not find {obs_id} in {data_dir}, dropping run")
-            run_list.remove(obs_id)
       obs_lists.append(obs_list)
 
    missing = set(tel_ids["OBS_ID"])-set(props["OBS_ID"])
    if len(missing) > 0:
        print("WARNING: Some runs were not found:")
-       print(missing)
+       print(sorted(missing))
+
    return obs_lists,props
 
 
