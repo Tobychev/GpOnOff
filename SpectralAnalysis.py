@@ -35,7 +35,6 @@ if __name__ == "__main__":
     src_ana_conf, src_pos, conf = ut.make_Analysis_config_from_yaml(args.config)
     ut.check_paths(conf)
     rebin = conf["optional"].get("fit_energy_bins",None)
-    root_dir = pt.Path("/home/hfm/hess/fits/hap-hd/") / conf["optional"]["production"] 
     out_dir = pt.Path(conf["out_path"])
 
 #    obs_dict = get_listed_hap_observations(conf["optional"]["runlist"],conf["optional"]["cut_conf"])
