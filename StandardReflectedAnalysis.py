@@ -42,16 +42,15 @@ def get_listed_observations(data_dir,run_list):
    props = store.obs_table.select_obs_id(run_list)
    props["ZEN_BIN"] = np.digitize(props["ZEN_PNT"],ZEN_BINS)
 
-   for group in props.group_by("ZEN_BIN"):
+   for group in props.group_by("ZEN_BIN").groups:
       obs_list = []
-      for obs_id in list(group["OBS_ID"]):
+      for obs_id in group["OBS_ID"]:
          try:
             obs_list.append(store.obs(obs_id))
          except ValueError:
             print(f"could not find {obs_id} in {data_dir}, dropping run")
             run_list.remove(obs_id)
       obs_lists.append(obs_list)
-   breakpoint()
    return obs_lists,props
 
 
