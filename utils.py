@@ -161,7 +161,7 @@ def check_paths(conf):
     outdir.mkdir(parents=True,exist_ok=True)
 
 def setup_makers(config,src_pos,extra_conf):
-   
+
     e_reco = map_axis_from_config(config.datasets.geom.axes.energy,"energy")
     e_true = map_axis_from_config(config.datasets.geom.axes.energy_true,"energy_true")
 
@@ -174,14 +174,14 @@ def setup_makers(config,src_pos,extra_conf):
     exclude_map = make_exclude_map_from_skypos(src_pos,extra_conf)
     bkg_maker = gm.ReflectedRegionsBackgroundMaker(exclusion_mask=exclude_map)
 
-    dm_maker = gm.SpectrumDatasetMaker(selection=config.datasets.map_selection,
+    spec_maker = gm.SpectrumDatasetMaker(selection=config.datasets.map_selection,
                                        containment_correction=config.datasets.containment_correction,
                                        use_region_center=True)
 
     safe_mask_maker = gm.SafeMaskMaker(methods=config.datasets.safe_mask.methods,
                                        **config.datasets.safe_mask.parameters)
 
-    return bkg_maker,safe_mask_maker,dm_maker,scaffold
+    return bkg_maker,safe_mask_maker,spec_maker,scaffold
 
 
 def make_dataset(observations,ana_conf,src_pos,conf):
