@@ -35,20 +35,28 @@ def split_runlist(runlist):
    return {"hess1":hess1,"hess2":hess2,"hess1u":hess1u}
 
 def flatten_obs_dict(obs_dict):
-   obs = []
+   obs_lst = []
+   names = []
+   props = []
    for key in obs_dict:
-      obs.append(obs_dict[key])
+      obs, prop = obs_dict[key]
+      for itm in obs:
+         ob, zen_bin = itm
+         obs_lst.append(ob)
+         names.append(f"{key}_zbin{zen_bin}")
+      props.append(prop)
 
-   return obs
+   prop = tab.vstack(props,join_type="exact")
+   return obs, prop,names
 
-def make_dataset(observations,ana_conf,src_pos,conf):
+def make_dataset(observations,name,ana_conf,src_pos,conf):
     # ## Setup makers
     bkg_maker,safe_mask_maker,spec_maker,scaffold = ut.setup_makers(ana_conf,src_pos,conf)
 
     # ## Reduce data
 
-    full_data = gds.Datasets()
-    safe_data = gds.Datasets()
+    full_data = gds.Datasets(name=name)
+    safe_data = gds.Datasets(name=namme)
 
     print("Doing run:")
     for ob in observations:
@@ -82,7 +90,7 @@ def get_listed_observations(data_dir,run_list):
       obs_list = []
       for obs_id in group["OBS_ID"]:
             obs_list.append(store.obs(obs_id))
-      obs_lists.append(obs_list)
+      obs_lists.append((obs_list,group["ZEN_BIN"][0])
 
    missing = set(tel_ids["OBS_ID"])-set(props["OBS_ID"])
    if len(missing) > 0:
@@ -117,6 +125,25 @@ def get_listed_hd_fr_observations(runlist,cut_config,prod="Prod23_Calib0834"):
    obs["hap-fr"] = get_listed_observations(data_dir, runs)
    return obs
 
+def save_stats(datasets,conf,name):
+    run_table = datasets.info_table(cumulative=False)
+    info_table = datasets.info_table(cumulative=True)
+    try:
+       info_table["num runs"] = len(datasets)
+    except TypeError:
+       info_table["num runs"] = 1
+
+    # ### Run by run table
+    stats_table_path = f'{conf["out_path"]}/{conf["source"]}_{name}_byrun.ecsv'
+    print(f"Saving run-by-run stats table at {stats_table_path}")
+    run_table.write( stats_table_path ,format="ascii.ecsv", overwrite=True)
+
+    stats_table_path = f'{conf["out_path"]}/{conf["source"]}_{name}_cumul.ecsv'
+    print(f"Saving cumulative stats table at {stats_table_path}")
+    info_table.write( stats_table_path ,format="ascii.ecsv", overwrite=True)
+    return info_table,run_table
+
+
 # Start of MAIN
 if __name__ == "__main__":
 
@@ -141,18 +168,26 @@ if __name__ == "__main__":
       obs_dict = get_listed_hd_fr_observations(conf["optional"]["runlist"],conf["optional"]["cut_conf"])
       datastore = "{root_dir}/{cut_conf}"
 
-   bkg_maker,safe_mask_maker,spec_maker,scaffold = ut.setup_makers(ana_conf,src_pos,conf)
-
    # ## Reduce data
    full_data = gds.Datasets()
    safe_data = gds.Datasets()
 
-   obs_list = flatten_obs_dict(obs_dict)
-   data = []
-   for lst in obs_list:
-      safe_set, full_set = make_dataset(lst,ana_conf,src_pos,conf)
-      data.append(safe_set,full_set.stack_reduce())
+   obs_list, prop,names = flatten_obs_dict(obs_dict)
+   for lst,name in zip(obs_list,names):
+      safe_set, full_set = make_dataset(lst,name,src_ana_conf,src_pos,conf)
+      safe_data.append(safe_set.stack_reduce())
+      full_data.append(full_set.stack_reduce())
 
+   save_stats(safe_data,conf,"safe_range")
+   save_stats(full_data,conf,"full_range")
+   breakpoint()
+
+   out_loc = out_dir / "reduced"
+   out_loc.mkdir(parents=True,exist_ok=True)
+   safe_data.write(out_loc / f"{conf['source']}_safe_dataset.yaml", overwrite=True)
+   safe_data.write(out_loc / f"{conf['source']}_full_dataset.yaml", overwrite=True)
+
+   
 
    for key in obs_dict:
        obs_objs, obs_tab = obs_dict[key]
