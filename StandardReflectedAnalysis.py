@@ -47,7 +47,7 @@ def flatten_obs_dict(obs_dict):
       props.append(prop)
 
    prop = tab.vstack(props,join_type="exact")
-   return obs, prop,names
+   return obs_lst, prop,names
 
 def make_dataset(observations,name,ana_conf,src_pos,conf):
     # ## Setup makers
@@ -55,17 +55,17 @@ def make_dataset(observations,name,ana_conf,src_pos,conf):
 
     # ## Reduce data
 
-    full_data = gds.Datasets(name=name)
-    safe_data = gds.Datasets(name=namme)
+    full_data = gds.Datasets()
+    safe_data = gds.Datasets()
 
     print("Doing run:")
     for ob in observations:
         dataset = spec_maker.run(
-            scaffold.copy(name=str(ob.obs_id)), ob)
+            scaffold.copy(name=f"{name}_{ob.obs_id}"), ob)
         print(ob.obs_id,end="... ",flush=True)
         dataset_on_off = bkg_maker.run(dataset,ob)
 
-        full_data.append(dataset_on_off.copy(name=f"{ob.obs_id}_full"))
+        full_data.append(dataset_on_off.copy(name=f"{name}_{ob.obs_id}_full"))
         try:
             safe_on_off = safe_mask_maker.run(dataset_on_off,ob)
         except:
@@ -90,7 +90,7 @@ def get_listed_observations(data_dir,run_list):
       obs_list = []
       for obs_id in group["OBS_ID"]:
             obs_list.append(store.obs(obs_id))
-      obs_lists.append((obs_list,group["ZEN_BIN"][0])
+      obs_lists.append((obs_list,group["ZEN_BIN"][0]))
 
    missing = set(tel_ids["OBS_ID"])-set(props["OBS_ID"])
    if len(missing) > 0:
@@ -175,53 +175,21 @@ if __name__ == "__main__":
    obs_list, prop,names = flatten_obs_dict(obs_dict)
    for lst,name in zip(obs_list,names):
       safe_set, full_set = make_dataset(lst,name,src_ana_conf,src_pos,conf)
-      safe_data.append(safe_set.stack_reduce())
-      full_data.append(full_set.stack_reduce())
+      safe_data.append(safe_set.stack_reduce(name=f"{name}_safe"))
+      full_data.append(full_set.stack_reduce(name=f"{name}_full"))
 
    save_stats(safe_data,conf,"safe_range")
    save_stats(full_data,conf,"full_range")
-   breakpoint()
 
    out_loc = out_dir / "reduced"
    out_loc.mkdir(parents=True,exist_ok=True)
    safe_data.write(out_loc / f"{conf['source']}_safe_dataset.yaml", overwrite=True)
-   safe_data.write(out_loc / f"{conf['source']}_full_dataset.yaml", overwrite=True)
+   full_data.write(out_loc / f"{conf['source']}_full_dataset.yaml", overwrite=True)
 
-   
+   safe_tot = safe_data.stack_reduce(name=f"{conf['source']}_safe_total")
+   full_tot = full_data.stack_reduce(name=f"{conf['source']}_full_total")
 
-   for key in obs_dict:
-       obs_objs, obs_tab = obs_dict[key]
-       ana_conf = src_ana_conf.copy()
-
-       out_loc = out_dir / key
-       out_loc.mkdir(parents=True,exist_ok=True)
-       ana_conf.general.datasets_file = out_loc / f"{conf['source']}_{key}_dataset.yaml"
-
-       ana_conf.observations.obs_ids = [itm.obs_id for itm in obs_objs]
-       ana_conf.observations.datastore = pt.Path(
-          datastore.format(
-             root_dir= root_dir,
-             key= key,
-             cut_conf = conf["optional"]["cut_conf"]))
-
-       ana_conf.observations.required_irf = ["aeff","edisp","psf", "bkg"]
-
-       ana_conf.datasets.map_selection = ["counts","exposure","edisp", "background"]
-       ana_conf.datasets.background.method = "reflected"
-
-       print(ana_conf)
-       ana = ga.Analysis(ana_conf)
-       ana.get_observations()
-       ana.get_datasets()
-
-       info = ana.datasets.info_table()
-
-
-       ana.config.write(out_loc / f"{key}_conf.log", overwrite = True)
-       info.write(out_loc / f"{key}_stats.csv", format = "ascii.ecsv", overwrite=True)
-       ana.write_datasets()
-       print(
-         f"Tobs={info['livetime'].to('h')[0]:.1f} Excess={info['excess'].value[0]:.1f} \
-               Significance={info['sqrt_ts'][0]:.2f}")
-
+   tab.Table([full_tot.info_dict()]).write(out_loc / f"{conf['source']}_full_stat.ecsv",overwrite=True)
+   tab.Table([safe_tot.info_dict()]).write(out_loc / f"{conf['source']}_safe_stat.ecsv",overwrite=True)
+   prop.write(out_loc / f"{conf['source']}_obs_prop.fits", overwrite=True)
 
