@@ -38,11 +38,8 @@ if __name__ == "__main__":
     out_dir = pt.Path(conf["out_path"])
 
 #    obs_dict = get_listed_hap_observations(conf["optional"]["runlist"],conf["optional"]["cut_conf"])
-    
-    datasets = gds.Datasets()
-    for data in conf["datasets"]:
-       dset = gds.Datasets.read(filename=data)
-       datasets.append(dset.stack_reduce())
+
+    datasets = gds.Datasets.read(filename=conf["datasets"])
 
     ana_conf = src_ana_conf.copy()
 
@@ -62,7 +59,7 @@ if __name__ == "__main__":
     ut.save_fit_result(fit_result,ana,conf,-1.0*u.TeV)
 
     best_fit = out_dir / f"{conf['source']}_best_fit.yaml"
-    ana.models.write(best_fit,overwrite=True)    
+    ana.models.write(best_fit,overwrite=True)
 
     vis.save_fit_residuals(ana.datasets[0],conf,f"PowerLawFit_Residuals")
 
