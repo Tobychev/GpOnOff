@@ -66,18 +66,24 @@ def flatten_obs_dict(obs_dict):
 
 def make_dataset(observations, name, ana_conf, src_pos, conf):
     # ## Setup makers
-    bkg_maker, safe_mask_maker, spec_maker, scaffold = ut.setup_makers(
-        ana_conf, src_pos, conf
-    )
+    (
+        bkg_maker,
+        safe_mask_maker,
+        spec_maker,
+        empty_spec,
+        map_maker,
+        empty_map,
+    ) = ut.setup_makers(ana_conf, src_pos, conf)
 
     # ## Reduce data
 
     full_data = gds.Datasets()
     safe_data = gds.Datasets()
+    maps = gds.Datasets()
 
     print("Doing run:")
     for ob in observations:
-        dataset = spec_maker.run(scaffold.copy(name=f"{name}_{ob.obs_id}"), ob)
+        dataset = spec_maker.run(empty_spec.copy(name=f"{name}_{ob.obs_id}"), ob)
         print(ob.obs_id, end="... ", flush=True)
         dataset_on_off = bkg_maker.run(dataset, ob)
 
@@ -88,8 +94,12 @@ def make_dataset(observations, name, ana_conf, src_pos, conf):
             print(f"skipping {ob.obs_id}")
             continue
         safe_data.append(safe_on_off)
+
+        dataset = map_maker.run(empty_map, ob)
+        maps.stack(dataset)
+
     print("done")
-    return safe_data, full_data
+    return safe_data, full_data, maps
 
 
 def get_listed_observations(data_dir, run_list):
@@ -103,10 +113,10 @@ def get_listed_observations(data_dir, run_list):
     props["ZEN_BIN"] = np.digitize(props["ZEN_PNT"], ZEN_BINS)
 
     for group in props.group_by("ZEN_BIN").groups:
-       obs_list = []
-       for obs_id in group["OBS_ID"]:
-             obs_list.append(store.obs(obs_id,required_irf="point-like"))
-       obs_lists.append((obs_list,group["ZEN_BIN"][0]))
+        obs_list = []
+        for obs_id in group["OBS_ID"]:
+            obs_list.append(store.obs(obs_id, required_irf="point-like"))
+        obs_lists.append((obs_list, group["ZEN_BIN"][0]))
 
     missing = set(tel_ids["OBS_ID"]) - set(props["OBS_ID"])
     if len(missing) > 0:
@@ -141,7 +151,8 @@ def get_listed_hd_fr_observations(runlist, cut_config, prod="Prod23_Calib0834"):
     obs["hap-fr"] = get_listed_observations(data_dir, runs)
     return obs
 
-def save_stats(datasets,out_loc,conf,name):
+
+def save_stats(datasets, out_loc, conf, name):
     run_table = datasets.info_table(cumulative=False)
     info_table = datasets.info_table(cumulative=True)
     try:
@@ -162,49 +173,63 @@ def save_stats(datasets,out_loc,conf,name):
 
 # Start of MAIN
 if __name__ == "__main__":
-   parser = argparse.ArgumentParser(description="Script to Run On Off analysis on gammapy formatted data")
-   parser.add_argument("config",
-                      type=str,
-                      help="Config file for the analysis to execute")
-   args = parser.parse_args()
+    parser = argparse.ArgumentParser(
+        description="Script to Run On Off analysis on gammapy formatted data"
+    )
+    parser.add_argument(
+        "config", type=str, help="Config file for the analysis to execute"
+    )
+    args = parser.parse_args()
 
-   # # Config
-   src_ana_conf, src_pos, conf = ut.make_Analysis_config_from_yaml(args.config)
-   ut.check_paths(conf)
-   rebin = conf["optional"].get("fit_energy_bins",None)
-   root_dir = pt.Path(conf["data_directory"]) / conf["optional"]["production"]
-   out_dir = pt.Path(conf["out_path"])
+    # # Config
+    src_ana_conf, src_pos, conf = ut.make_Analysis_config_from_yaml(args.config)
+    ut.check_paths(conf)
+    rebin = conf["optional"].get("fit_energy_bins", None)
+    root_dir = pt.Path(conf["data_directory"]) / conf["optional"]["production"]
+    out_dir = pt.Path(conf["out_path"])
 
-   if "hap-hd" in conf["data_directory"]:
-      obs_dict = get_listed_hap_observations(conf["optional"]["runlist"],conf["optional"]["cut_conf"])
-      datastore = "{root_dir}/{key}/{cut_conf}"
+    if "hap-hd" in conf["data_directory"]:
+        obs_dict = get_listed_hap_observations(
+            conf["optional"]["runlist"], conf["optional"]["cut_conf"]
+        )
+        datastore = "{root_dir}/{key}/{cut_conf}"
 
-   if "hap-fr" in conf["data_directory"]:
-      obs_dict = get_listed_hd_fr_observations(conf["optional"]["runlist"],conf["optional"]["cut_conf"])
-      datastore = "{root_dir}/{cut_conf}"
+    if "hap-fr" in conf["data_directory"]:
+        obs_dict = get_listed_hd_fr_observations(
+            conf["optional"]["runlist"], conf["optional"]["cut_conf"]
+        )
+        datastore = "{root_dir}/{cut_conf}"
 
-   # ## Reduce data
-   full_data = gds.Datasets()
-   safe_data = gds.Datasets()
+    # ## Reduce data
+    full_data = gds.Datasets()
+    safe_data = gds.Datasets()
+    map_data = gds.Datasets()
 
-   obs_list, prop,names = flatten_obs_dict(obs_dict)
-   for lst,name in zip(obs_list,names):
-      safe_set, full_set = make_dataset(lst,name,src_ana_conf,src_pos,conf)
-      safe_data.append(safe_set.stack_reduce(name=f"{name}_safe"))
-      full_data.append(full_set.stack_reduce(name=f"{name}_full"))
+    obs_list, prop, names = flatten_obs_dict(obs_dict)
+    for lst, name in zip(obs_list, names):
+        safe_set, full_set, maps = make_dataset(lst, name, src_ana_conf, src_pos, conf)
+        safe_data.append(safe_set.stack_reduce(name=f"{name}_safe"))
+        full_data.append(full_set.stack_reduce(name=f"{name}_full"))
+        map_data.append(maps.to_image(name=f"{name}_maps"))
 
-   out_loc = out_dir / "reduced"
-   out_loc.mkdir(parents=True,exist_ok=True)
+    out_loc = out_dir / "reduced"
+    out_loc.mkdir(parents=True, exist_ok=True)
 
-   save_stats(safe_data, out_loc, conf, "safe_range")
-   save_stats(full_data, out_loc, conf, "full_range")
+    save_stats(safe_data, out_loc, conf, "safe_range")
+    save_stats(full_data, out_loc, conf, "full_range")
 
-   safe_data.write(out_loc / f"{conf['source']}_safe_dataset.yaml", overwrite=True)
-   full_data.write(out_loc / f"{conf['source']}_full_dataset.yaml", overwrite=True)
+    safe_data.write(out_loc / f"{conf['source']}_safe_dataset.yaml", overwrite=True)
+    full_data.write(out_loc / f"{conf['source']}_full_dataset.yaml", overwrite=True)
 
-   safe_tot = safe_data.stack_reduce(name=f"{conf['source']}_safe_total")
-   full_tot = full_data.stack_reduce(name=f"{conf['source']}_full_total")
+    safe_tot = safe_data.stack_reduce(name=f"{conf['source']}_safe_total")
+    full_tot = full_data.stack_reduce(name=f"{conf['source']}_full_total")
 
-   tab.Table([full_tot.info_dict()]).write(out_loc / f"{conf['source']}_full_stat.ecsv",overwrite=True)
-   tab.Table([safe_tot.info_dict()]).write(out_loc / f"{conf['source']}_safe_stat.ecsv",overwrite=True)
-   prop.write(out_loc / f"{conf['source']}_obs_prop.ecsv", format="ascii.ecsv",overwrite=True)
+    tab.Table([full_tot.info_dict()]).write(
+        out_loc / f"{conf['source']}_full_stat.ecsv", overwrite=True
+    )
+    tab.Table([safe_tot.info_dict()]).write(
+        out_loc / f"{conf['source']}_safe_stat.ecsv", overwrite=True
+    )
+    prop.write(
+        out_loc / f"{conf['source']}_obs_prop.ecsv", format="ascii.ecsv", overwrite=True
+    )
