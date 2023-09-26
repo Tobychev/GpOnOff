@@ -164,13 +164,18 @@ def setup_makers(config,src_pos,extra_conf):
 
     e_reco = map_axis_from_config(config.datasets.geom.axes.energy,"energy")
     e_true = map_axis_from_config(config.datasets.geom.axes.energy_true,"energy_true")
+    rad_bins = gmap.MapAxis.from_bounds(0,5,nbin=30,unit="deg",name="rad")
 
     on_region = reg.CircleSkyRegion(center=src_pos,radius=config.datasets.on_region.radius)
 
+    map_geom = gmap.WcsGeom.create(skydir=src_pos,
+                                   binz=0.02, width=(5,5), fram="icrs", axes=[e_reco])
     geom = gmap.RegionGeom.create(region=on_region, axes=[e_reco])
     scaffold = gds.SpectrumDataset.create( geom=geom,
                                       energy_axis_true=e_true)
 
+
+    empty_map = gmap.MapDataset.create(geom=map_geom, energy_axis_true=e_true, name="empty")
     exclude_map = make_exclude_map_from_skypos(src_pos,extra_conf)
     bkg_maker = gm.ReflectedRegionsBackgroundMaker(exclusion_mask=exclude_map)
 
