@@ -196,18 +196,18 @@ def setup_makers(config, src_pos, extra_conf):
 
     rad_bins = gmap.MapAxis.from_bounds(0, 5, nbin=30, unit="deg", name="rad")
     map_geom = gmap.WcsGeom.create(
-        skydir=src_pos, binz=0.02, width=(5, 5), fram="icrs", axes=[e_reco]
+        skydir=src_pos, binsz=0.02, width=(5, 5), frame="icrs", axes=[e_reco]
     )
-    empty_map = gmap.MapDataset.create(
+    empty_map = gds.MapDataset.create(
         geom=map_geom, energy_axis_true=e_true, name="empty"
     )
-    map_maker = gm.MapDataSetMake(selection=["counts", "exposure", "psf"])
+    map_maker = gm.MapDatasetMaker(selection=["counts", "exposure", "psf"])
 
     return (
         bkg_maker,
         safe_mask_maker,
         spec_maker,
-        empy_spec,
+        empty_spec,
         map_maker,
         empty_map,
     )

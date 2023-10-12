@@ -40,7 +40,10 @@ if __name__ == "__main__":
 
     #    obs_dict = get_listed_hap_observations(conf["optional"]["runlist"],conf["optional"]["cut_conf"])
 
-    datasets = gds.Datasets.read(filename=conf["datasets"])
+    if len(conf["datasets"]) == 1:
+       datasets = gds.Datasets.read(filename=conf["datasets"][0])
+    else:
+      raise ValueError("Only one dataset file supported now")
 
     ana_conf = src_ana_conf.copy()
 

@@ -7,11 +7,11 @@ import astropy.table as tab
 import gammapy.analysis as ga
 import gammapy.data as gda
 import gammapy.datasets as gds
+import matplotlib.pyplot as pl
 import numpy as np
 
 import utils as ut
 import visualisation as vis
-
 HESS1_END = 83490
 HESS2_END = 123799
 
@@ -79,7 +79,7 @@ def make_dataset(observations, name, ana_conf, src_pos, conf):
 
     full_data = gds.Datasets()
     safe_data = gds.Datasets()
-    maps = gds.Datasets()
+    maps = empty_map.copy()
 
     print("Doing run:")
     for ob in observations:
@@ -220,6 +220,7 @@ if __name__ == "__main__":
 
     safe_data.write(out_loc / f"{conf['source']}_safe_dataset.yaml", overwrite=True)
     full_data.write(out_loc / f"{conf['source']}_full_dataset.yaml", overwrite=True)
+    map_data.write(out_loc / f"{conf['source']}_map_dataset.yaml", overwrite=True)
 
     safe_tot = safe_data.stack_reduce(name=f"{conf['source']}_safe_total")
     full_tot = full_data.stack_reduce(name=f"{conf['source']}_full_total")
@@ -233,3 +234,11 @@ if __name__ == "__main__":
     prop.write(
         out_loc / f"{conf['source']}_obs_prop.ecsv", format="ascii.ecsv", overwrite=True
     )
+
+    for sky in map_data:
+        fig = pl.figure()
+        mid = sky.geoms["geom"].center_skydir      
+        ax = sky.cutout(mid,width=3.).counts.smooth("0.05 deg").plot(add_cbar=True)
+        ax.scatter(mid.ra.deg,mid.dec.deg,marker="o",edgecolor="white",transform=ax.get_transform("icrs"))
+        pl.savefig(out_dir / f"{conf['source']}_{sky.name}_counts.png")
+        pl.close()
