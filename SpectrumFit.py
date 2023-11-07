@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 import argparse
 import astropy.units as un
+import astropy.table as tab
 import gammapy.analysis as ga
 import gammapy.datasets as gds
 import gammapy.maps as gmap
@@ -32,6 +33,16 @@ def make_model(conf,kind="PL"):
       ])
    return tot_model
 
+
+def set_E_ref_to_pivot(analysis):
+    model = analysis.models[0].spectral_model
+    if isinstance(model,gmo.models.PowerLawSpectralModel):
+        model.reference.value = ana.models[0].spectral_model.pivot_energy.to_value("TeV")
+    else:
+        raise ValueError(f"Unsuported model type: '{model}'")
+    return analysis
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Script to Run On Off analysis on gammapy formatted data")
     parser.add_argument("config",
@@ -43,13 +54,13 @@ if __name__ == "__main__":
     ana_conf, src_pos, conf = ut.make_Analysis_config_from_yaml(args.config)
     ut.check_paths(conf)
 
-    if conf["optional"].get("dataset_file",None):
-       print(f'reading data from:\n  {conf["optional"]["dataset_file"]}')
-       datasets = gds.Datasets.read(conf["optional"]["dataset_file"])
+    if conf.get("datasets",None):
+       print(f'reading data from:\n  {conf["datasets"][0]}')
+       datasets = gds.Datasets.read(conf["datasets"][0])
     else:
-       print(f"reading data from:\n  {conf['out_path']}/Dataset/{conf['source']}_dataset.yaml")
+       print(f"reading data from:\n  {conf['out_path']}/reduced_dataset/{conf['source']}_dataset.yaml")
        datasets = gds.Datasets.read(
-             f"{conf['out_path']}/Dataset/{conf['source']}_dataset.yaml")
+             f"{conf['out_path']}/reduced_dataset/{conf['source']}_dataset.yaml")
 
     if conf["optional"].get("contour_points",None):
        npoints = conf["optional"]["contour_points"]
@@ -70,17 +81,30 @@ if __name__ == "__main__":
     ana.set_models(make_model(conf))
 
     ana.run_fit()
-    ana.fit.covariance(ana.datasets)
+    fit_result_at_E0 = ana.fit_result.parameters.to_table()
+    fit_result_at_E0 = fit_result_at_E0[fit_result_at_E0["name"]=="amplitude"]
+    fit_result_at_E0["name"] = f"amp@{conf['fit_E0']:5.3}"
+
+    ana = set_E_ref_to_pivot(ana)
+    ana.run_fit()
+    opt_res = ana.fit.optimize(ana.datasets)
+    ana.fit.covariance(ana.datasets, opt_res)
     fig, cont = vis.plot_contours(conf,ana,"amplitude","index",npoints)
     print(f"Saving countours to: \n"
           f'{conf["out_path"]}/{conf["source"]}_Countours.png')
     fig.savefig(f'{conf["out_path"]}/{conf["source"]}_Countours.png')
 
     fit_result = ana.fit_result.parameters.to_table()
+    fit_result = tab.vstack([fit_result,fit_result_at_E0])
     print(fit_result[[
        "name",
        "value",
        "error",
        "unit",]])
+    fit_result[[
+       "name",
+       "value",
+       "error",
+       "unit",]].write(f'{conf["out_path"]}/{conf["source"]}_fit.ecsv',overwrite=True)
     print()
     print(cont)
