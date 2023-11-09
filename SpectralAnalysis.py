@@ -16,15 +16,15 @@ def make_model(conf,kind="PL"):
    index = conf["optional"].get("start_index",2)
    ampl = conf["optional"].get("start_amplitude",1)
    if kind == "PL":
-     model = gmo.models.PowerLawSpectralModel(
+     model = gmo.PowerLawSpectralModel(
           index=index,
           amplitude=f"{ampl}e-12 TeV-1 cm-2 s-1",
           reference=conf["fit_E0"] * un.TeV,
       )
    else:
       raise ValueError(f"Unsuported model type: '{kind}'")
-   tot_model = gmo.models.Models([
-      gmo.models.SkyModel(
+   tot_model = gmo.Models([
+      gmo.SkyModel(
          spectral_model=model,
          name=conf["source"])
       ])
@@ -32,7 +32,7 @@ def make_model(conf,kind="PL"):
 
 def set_E_ref_to_pivot(analysis):
     model = analysis.models[0].spectral_model
-    if isinstance(model,gmo.models.PowerLawSpectralModel):
+    if isinstance(model,gmo.PowerLawSpectralModel):
         model.reference.value = ana.models[0].spectral_model.pivot_energy.to_value("TeV")
     else:
         raise ValueError(f"Unsuported model type: '{model}'")
@@ -64,6 +64,11 @@ if __name__ == "__main__":
     ut.check_paths(conf)
     rebin = conf["optional"].get("fit_energy_bins", None)
     out_dir = pt.Path(conf["out_path"])
+
+    if conf["optional"].get("contour_points",None):
+       npoints = conf["optional"]["contour_points"]
+    else:
+       npoints = 10
 
     if len(conf["datasets"]) == 1:
        datasets = gds.Datasets.read(filename=conf["datasets"][0])
