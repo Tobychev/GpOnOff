@@ -186,7 +186,7 @@ def setup_makers(config, src_pos, extra_conf):
     spec_maker = gm.SpectrumDatasetMaker(
         selection=config.datasets.map_selection,
         containment_correction=config.datasets.containment_correction,
-        use_region_center=True,
+        use_region_center=extra_conf["optional"].get("use_region_center",False),
     )
 
     safe_mask_maker = gm.SafeMaskMaker(
@@ -318,7 +318,6 @@ def save_fit_result(fit_result, ana_conf, conf, E_thr):
             None,
             True,
             "",
-            "",
         ]
     )
     fit_result.add_row(
@@ -332,11 +331,10 @@ def save_fit_result(fit_result, ana_conf, conf, E_thr):
             None,
             True,
             "",
-            "",
         ]
     )
     fit_result.add_row(
-        ["", "threshold_energy", E_thr, "TeV", 0.0, None, None, True, "", ""]
+        ["", "threshold_energy", E_thr, "TeV", 0.0, None, None, True, ""]
     )
 
     fit_result[["name", "value", "error", "unit"]].write(

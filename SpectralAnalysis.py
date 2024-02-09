@@ -118,7 +118,8 @@ if __name__ == "__main__":
 
 
     opt_res = ana.fit.optimize(ana.datasets)
-    ana.fit.covariance(ana.datasets, opt_res)
+    #ana.fit.covariance(ana.datasets, opt_res)
+    ana.fit.covariance(ana.datasets)
     fig, cont = vis.plot_contours(conf,ana,"amplitude","index",npoints)
     print(f"Saving countours to: \n"
           f'{conf["out_path"]}/{conf["source"]}_Countours.png')

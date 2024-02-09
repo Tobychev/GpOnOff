@@ -115,7 +115,8 @@ def get_listed_observations(data_dir, run_list):
     for group in props.group_by("ZEN_BIN").groups:
         obs_list = []
         for obs_id in group["OBS_ID"]:
-            obs_list.append(store.obs(obs_id, required_irf="point-like"))
+            #obs_list.append(store.obs(obs_id, required_irf="point-like"))
+            obs_list.append(store.obs(obs_id))
         obs_lists.append((obs_list, group["ZEN_BIN"][0]))
 
     missing = set(tel_ids["OBS_ID"]) - set(props["OBS_ID"])
@@ -125,6 +126,16 @@ def get_listed_observations(data_dir, run_list):
 
     return obs_lists, props
 
+def get_all_exported(root_dir):
+    data_dirs = list(root_dir.glob("out_*"))
+
+    obs = {}
+    for dr in data_dirs:
+         ds = gda.DataStore.from_dir(dr)
+         runs = ds.obs_table["OBS_ID"].data
+         key = dr.name.replace("out_","").replace("_runs","")
+         obs[key] = get_listed_observations(dr, runs)
+    return obs
 
 def get_listed_hap_observations(runlist, cut_config, prod="fits_prod05"):
     root_dir = pt.Path("/home/hfm/hess/fits/hap-hd/" + prod)
@@ -185,20 +196,21 @@ if __name__ == "__main__":
     src_ana_conf, src_pos, conf = ut.make_Analysis_config_from_yaml(args.config)
     ut.check_paths(conf)
     rebin = conf["optional"].get("fit_energy_bins", None)
-    root_dir = pt.Path(conf["data_directory"]) / conf["optional"]["production"]
+    root_dir = pt.Path(conf["data_directory"]) / conf["optional"].get("production","")
     out_dir = pt.Path(conf["out_path"])
 
     if "hap-hd" in conf["data_directory"]:
         obs_dict = get_listed_hap_observations(
             conf["optional"]["runlist"], conf["optional"]["cut_conf"]
         )
-        datastore = "{root_dir}/{key}/{cut_conf}"
 
     if "hap-fr" in conf["data_directory"]:
         obs_dict = get_listed_hd_fr_observations(
             conf["optional"]["runlist"], conf["optional"]["cut_conf"]
         )
-        datastore = "{root_dir}/{cut_conf}"
+
+    if "fits_export" in conf["data_directory"]:
+        obs_dict = get_all_exported(root_dir)
 
     # ## Reduce data
     full_data = gds.Datasets()
@@ -206,8 +218,15 @@ if __name__ == "__main__":
     map_data = gds.Datasets()
 
     obs_list, prop, names = flatten_obs_dict(obs_dict)
+
+    stats = {}
     for lst, name in zip(obs_list, names):
         safe_set, full_set, maps = make_dataset(lst, name, src_ana_conf, src_pos, conf)
+        obid =[itm.obs_id for itm in lst]
+        stats[f"{name}_full"] = full_set.info_table(cumulative=True) 
+        stats[f"{name}_safe"] = safe_set.info_table(cumulative=True)
+        stats[f"{name}_full"]["name"] = obid 
+        stats[f"{name}_safe"]["name"] = obid
         safe_data.append(safe_set.stack_reduce(name=f"{name}_safe"))
         full_data.append(full_set.stack_reduce(name=f"{name}_full"))
         map_data.append(maps.to_image(name=f"{name}_maps"))
@@ -234,6 +253,12 @@ if __name__ == "__main__":
     prop.write(
         out_loc / f"{conf['source']}_obs_prop.ecsv", format="ascii.ecsv", overwrite=True
     )
+
+    # Need to process stats dict into two tables, join on the prop table to get out the obs time, sort by obs time
+    # and *then* make the source stat plot, but might not work properly since cumulation happens across small datasets...
+    # vis.plot_source_stat(full_tot.info_table(cumulative=True),path=conf["out_path"],prefix=f"{conf['source']}_full")
+    # vis.plot_source_stat(safe_tot.info_table(cumulatie=True),path=conf["out_path"],prefix=f"{conf['source']}_safe")
+
 
     for sky in map_data:
         fig = pl.figure()

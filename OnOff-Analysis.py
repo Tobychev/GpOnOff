@@ -10,8 +10,8 @@ import os
 import shutil
 import yaml
 
-import gplib.utils as ut
-import gplib.visualisation as vis
+import utils as ut
+import visualisation as vis
 
 def make_dataset(observations,ana_conf,src_pos,conf):
     # ## Setup makers
