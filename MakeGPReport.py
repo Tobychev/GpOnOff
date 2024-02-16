@@ -18,6 +18,7 @@ def make_report(loc):
 
    print(f"Making report for {loc}")
    for dir in os.listdir(loc):
+      breakpoint()
       if dir.endswith("ecsv"):
          if dir.endswith("fit_result.ecsv"):
             fit = at.Table.read(f"{loc}/{dir}",format="ascii.ecsv")

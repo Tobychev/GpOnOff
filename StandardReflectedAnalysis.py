@@ -163,9 +163,11 @@ def get_listed_hd_fr_observations(runlist, cut_config, prod="Prod23_Calib0834"):
     return obs
 
 
-def save_stats(datasets, out_loc, conf, name):
+def save_stats(datasets, ids, out_loc, conf, name):
     run_table = datasets.info_table(cumulative=False)
+    run_table["name"] = ids
     info_table = datasets.info_table(cumulative=True)
+    info_table["name"] = ids
     try:
         info_table["num runs"] = len(datasets)
     except TypeError:
@@ -174,6 +176,7 @@ def save_stats(datasets, out_loc, conf, name):
     # ### Run by run table
     stats_table_path = out_loc / f'{conf["source"]}_{name}_byrun.ecsv'
     print(f"Saving run-by-run stats table at {stats_table_path}")
+    run_table
     run_table.write(stats_table_path, format="ascii.ecsv", overwrite=True)
 
     stats_table_path = out_loc / f'{conf["source"]}_{name}_cumul.ecsv'
@@ -213,29 +216,31 @@ if __name__ == "__main__":
         obs_dict = get_all_exported(root_dir)
 
     # ## Reduce data
+    
     full_data = gds.Datasets()
     safe_data = gds.Datasets()
     map_data = gds.Datasets()
+    stat_data = gds.Datasets()
 
     obs_list, prop, names = flatten_obs_dict(obs_dict)
 
-    stats = {}
+    obs_ids = []
     for lst, name in zip(obs_list, names):
         safe_set, full_set, maps = make_dataset(lst, name, src_ana_conf, src_pos, conf)
         obid =[itm.obs_id for itm in lst]
-        stats[f"{name}_full"] = full_set.info_table(cumulative=True) 
-        stats[f"{name}_safe"] = safe_set.info_table(cumulative=True)
-        stats[f"{name}_full"]["name"] = obid 
-        stats[f"{name}_safe"]["name"] = obid
+        for idx,itm in zip(obid,safe_set):
+            stat_data.append(itm)
+            obs_ids.append(idx)
         safe_data.append(safe_set.stack_reduce(name=f"{name}_safe"))
         full_data.append(full_set.stack_reduce(name=f"{name}_full"))
         map_data.append(maps.to_image(name=f"{name}_maps"))
 
+
     out_loc = out_dir / "reduced"
     out_loc.mkdir(parents=True, exist_ok=True)
 
-    save_stats(safe_data, out_loc, conf, "safe_range")
-    save_stats(full_data, out_loc, conf, "full_range")
+    save_stats(stat_data, obs_ids, out_dir, conf, "safe_range")
+    #save_stats(full_data, out_loc, conf, "full_range")
 
     safe_data.write(out_loc / f"{conf['source']}_safe_dataset.yaml", overwrite=True)
     full_data.write(out_loc / f"{conf['source']}_full_dataset.yaml", overwrite=True)
@@ -245,19 +250,16 @@ if __name__ == "__main__":
     full_tot = full_data.stack_reduce(name=f"{conf['source']}_full_total")
 
     tab.Table([full_tot.info_dict()]).write(
-        out_loc / f"{conf['source']}_full_stat.ecsv", overwrite=True
+        out_dir / f"{conf['source']}_full_stat.ecsv", overwrite=True
     )
     tab.Table([safe_tot.info_dict()]).write(
-        out_loc / f"{conf['source']}_safe_stat.ecsv", overwrite=True
+        out_dir / f"{conf['source']}_safe_stat.ecsv", overwrite=True
     )
     prop.write(
-        out_loc / f"{conf['source']}_obs_prop.ecsv", format="ascii.ecsv", overwrite=True
+        out_dir / f"{conf['source']}_obs_prop.ecsv", format="ascii.ecsv", overwrite=True
     )
 
-    # Need to process stats dict into two tables, join on the prop table to get out the obs time, sort by obs time
-    # and *then* make the source stat plot, but might not work properly since cumulation happens across small datasets...
-    # vis.plot_source_stat(full_tot.info_table(cumulative=True),path=conf["out_path"],prefix=f"{conf['source']}_full")
-    # vis.plot_source_stat(safe_tot.info_table(cumulatie=True),path=conf["out_path"],prefix=f"{conf['source']}_safe")
+    vis.plot_source_stat(stat_data.info_table(cumulative=True),path=conf["out_path"],prefix=f"{conf['source']}_safe")
 
 
     for sky in map_data:
