@@ -18,7 +18,6 @@ def make_report(loc):
 
    print(f"Making report for {loc}")
    for dir in os.listdir(loc):
-      breakpoint()
       if dir.endswith("ecsv"):
          if dir.endswith("fit_result.ecsv"):
             fit = at.Table.read(f"{loc}/{dir}",format="ascii.ecsv")
@@ -57,13 +56,14 @@ def make_report(loc):
    doc.add_heading("Stats",1)
    doc.add_picture(f"{loc}/{statpic}",width=docx.shared.Cm(4))
 
-   if cml:
+   # This is not working now
+   if cml and False:
       zens=  cml["zenith"]
       zen_mean = zens.mean()
       zen_med,zen_sty = np.percentile(zens,[50,75])
       tot_stat = cml[-1]
       nrows = len(tot_stat.colnames)+2
-      #The above leads to euse the by run zenit spot
+      #The above leads to reuse the by run zenit spot
       table1 = doc.add_table(rows=nrows,cols=2)
 
       for idx,val in enumerate(tot_stat):
@@ -86,14 +86,14 @@ def make_report(loc):
       row_sty = table1.rows[-1]
       row_sty.cells[0].text = "Zenith 75%"
       row_sty.cells[1].text = f"{zen_sty:.3f}"
-   else:
-      raise ValueError(f"Did not find a stats file in {loc}")
+   #else:
+   #   raise ValueError(f"Did not find a stats file in {loc}")
 
    doc.add_heading("Spectral Fit",1)
    doc.add_picture(f"{loc}/{fitpic}",width=docx.shared.Cm(4))
 
 
-   table2 = doc.add_table(rows=6,cols=4)
+   table2 = doc.add_table(rows=7,cols=4)
    row = table2.rows[0]
    row.cells[0].text = "Name"
    row.cells[1].text = "Value"
