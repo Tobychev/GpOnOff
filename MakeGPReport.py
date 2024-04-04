@@ -10,12 +10,13 @@ formatters = {
       "livetime": lambda x: "{:.3f}".format(x/3600),
       "ontime": lambda x: "{:.3f}".format(x/3600),
       "stat_type": str,
+      "zenith": "{:.3f}".format,
        }
 
 def make_report(loc):
    oldbinpic = rebinpic = None
    cbeini = cberes = cont = None
-
+   expo = []
    print(f"Making report for {loc}")
    for dir in os.listdir(loc):
       if dir.endswith("ecsv"):
@@ -25,6 +26,8 @@ def make_report(loc):
             cml = at.Table.read(f"{loc}/{dir}",format="ascii.ecsv")
          if dir.endswith("byrun.ecsv"):
             run = at.Table.read(f"{loc}/{dir}",format="ascii.ecsv")
+         if dir.endswith("obs_prop.ecsv"):
+            obs = at.Table.read(f"{loc}/{dir}",format="ascii.ecsv")
       elif dir.endswith("png"):
          if dir.endswith("Stat.png"):
             statpic = dir
@@ -44,9 +47,13 @@ def make_report(loc):
             cberes = dir
          if dir.endswith("Countours.png"):
             cont = dir
+         if dir.endswith("maps_counts.png"):
+            expo.append(dir)
       elif dir.endswith("yaml"):
          conf = dir
-   if not "statpic" in locals():
+   if (not "statpic" in locals() 
+        and not "cml" in locals()
+        and not "obs" in locals()):
       raise ValueError(f"Folder {loc} is not a proper result location")
    if not "respic" in locals():
       raise ValueError(f"Folder {loc} is lacks a residuals plot, rerun OnOffAnalysis to fix this")
@@ -56,9 +63,8 @@ def make_report(loc):
    doc.add_heading("Stats",1)
    doc.add_picture(f"{loc}/{statpic}",width=docx.shared.Cm(4))
 
-   # This is not working now
-   if cml and False:
-      zens=  cml["zenith"]
+   if cml and obs:
+      zens=  obs["ZEN_PNT"]
       zen_mean = zens.mean()
       zen_med,zen_sty = np.percentile(zens,[50,75])
       tot_stat = cml[-1]
@@ -86,14 +92,12 @@ def make_report(loc):
       row_sty = table1.rows[-1]
       row_sty.cells[0].text = "Zenith 75%"
       row_sty.cells[1].text = f"{zen_sty:.3f}"
-   #else:
-   #   raise ValueError(f"Did not find a stats file in {loc}")
 
    doc.add_heading("Spectral Fit",1)
    doc.add_picture(f"{loc}/{fitpic}",width=docx.shared.Cm(4))
 
 
-   table2 = doc.add_table(rows=7,cols=4)
+   table2 = doc.add_table(rows=len(fit)+1,cols=4)
    row = table2.rows[0]
    row.cells[0].text = "Name"
    row.cells[1].text = "Value"
@@ -101,7 +105,7 @@ def make_report(loc):
    row.cells[3].text = "Unit"
 
    for idx,vals in enumerate(fit): 
-      row = table2.rows[idx]
+      row = table2.rows[idx+1]
       name = vals[0]
       frmt = formatters.get(name,"{:.4e}".format)
       row.cells[0].text = name
@@ -122,6 +126,28 @@ def make_report(loc):
 
    doc.add_picture(f"{loc}/{respic}",width=docx.shared.Cm(4))
    doc.add_picture(f"{loc}/{likpic}",width=docx.shared.Cm(4))
+
+   doc.add_heading("Obs diagnostics", 1)
+   table3 = doc.add_table(rows=len(obs)+1,cols=5)
+   row = table3.rows[0]
+   row.cells[0].text = "Obs ID"
+   row.cells[1].text = "Obs Date"
+   row.cells[2].text = "Livetime"
+   row.cells[3].text = "Zenith"
+   row.cells[4].text = "Zenith bin"
+
+   for idx,row in enumerate(obs["OBS_ID","DATE-OBS","LIVETIME","ZEN_PNT","ZEN_BIN"]): 
+      tab_row = table3.rows[idx+1]
+      tab_row.cells[0].text = str(row["OBS_ID"])
+      tab_row.cells[1].text = str(row[1])
+      tab_row.cells[2].text = formatters["livetime"](row[2])
+      tab_row.cells[3].text = formatters["zenith"](row[3])
+      tab_row.cells[4].text = str(row[4])
+
+   doc.add_heading("Exposure maps",2)
+   for itm in expo:
+       doc.add_paragraph(" ".join(itm.split("_")[1:-2]))
+       doc.add_picture(f"{loc}/{itm}",width=docx.shared.Cm(4))
 
    doc.add_heading("Config",1)
    with open(f"{loc}/{conf}","r") as fil:
