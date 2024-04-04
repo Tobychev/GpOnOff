@@ -6,84 +6,96 @@ import pathlib as pt
 import gammapy.analysis as ga
 import gammapy.data as gda
 import gammapy.datasets as gds
-
-import utils as ut
+import utils as uts
 import visualisation as vis
+import inputs as inp
+import processing as pro
 
-HESS1_END = 83490
-HESS2_END = 127699
+def make_dataset(observations, name, ana_conf, src_pos, conf):
+    # ## Setup makers
+    (
+        ring_bkg_maker,
+        safe_mask_maker,
+        map_maker,
+        excess_maker,
+        empty_map,
+    ) = pro.setup_no_bkg_ring_makers(ana_conf, src_pos, conf)
 
-def split_runlist(runlist):
-   with open(runlist,"r") as fil:      
-      runlines = fil.readlines()
-   hess1 = []
-   hess2 = []
-   hess1u = []
-   for runline in runlines:
-      run = int(runline.split()[0])
-      if run <= HESS1_END:
-         hess1.append(run)
-      elif run <= HESS2_END:
-         hess2.append(run)
-      else:
-         hess1u.append(run)
+    # ## Reduce data
 
-   return {"hess1":hess1,"hess2":hess2,"hess1u":hess1u}
+    # full_data = gds.Datasets()
+    safe_map = empty_map.copy(name="{name}_stacked")
 
+    print("Doing run:")
+    for ob in observations:
+        dataset = map_maker.run(empty_map.copy(name=f"{name}_{ob.obs_id}"), ob)
+        print(ob.obs_id, end="... ", flush=True)
+        try:
+            safe_data = safe_mask_maker.run(dataset, ob)
+        except:
+            print(f"skipping {ob.obs_id}")
+            continue
 
-def get_listed_hap_observations(runlist,cut_config,prod="fits_prod05"):
-   root_dir = pt.Path("/home/hfm/hess/fits/hap-hd/"+ prod)
+        #full_data.append(dataset_on_off.copy(name=f"{name}_{ob.obs_id}_full"))
+        tmp = safe_data.copy(name=f"tmp_{name}_{ob.obs_id}")
 
-   lists = split_runlist(runlist)
+        # Does this really make sense?
+        safe_data.background = empty_map.exposure
+        safe_data.background.data = tmp.exposure.data
+        breakpoint()
 
-   obs = {}
-   for key in lists:
-      if len(lists[key]) > 0:
-         data_dir = root_dir / key / cut_config
-         store = gda.DataStore.from_dir(data_dir)
-         obs_list = []
-         for obs_id in lists[key]:
-            obs_list.append(store.obs(obs_id))
-         store.obs_table.add_index("OBS_ID")
-         props = store.obs_table.loc[lists[key]]
-         obs[key] = obs_list,props
+        safe_ring = ring_bkg_maker.run(safe_data)
+        safe_map.stack(safe_ring)
 
-
-   return obs
+    flux_maps = excess_maker.run(safe_ring)
+    print("done")
+    return safe_map, flux_maps, excess_maker
 
 # Start of MAIN
 if __name__ == "__main__":
-
-    parser = argparse.ArgumentParser(description="Script to Run On Off analysis on gammapy formatted data")
-    parser.add_argument("config",
-                       type=str,
-                       help="Config file for the analysis to execute")
-    parser.add_argument("--skip-flux",
-          action='store_true',
-          default=False,
-          help = "Skip calculating fluxes (saves time)")
-    parser.add_argument("--debug",
-          action='store_true',
-          default=False,
-          help = "Create extra debug plots")
+    parser = argparse.ArgumentParser(
+        description="Script to Run ring-background analysis on gammapy formatted data"
+    )
+    parser.add_argument(
+        "config", type=str, help="Config file for the analysis to execute"
+    )
     args = parser.parse_args()
 
     # # Config
-    src_ana_conf, src_pos, conf = ut.make_Analysis_config_from_yaml(args.config)
-    ut.check_paths(conf)
-    joint_fit = conf["joint_fit"]
-    rebin = conf["optional"].get("fit_energy_bins",None)
-    root_dir = pt.Path("/home/hfm/hess/fits/hap-hd/") / conf["optional"]["production"] 
+    src_ana_conf, src_pos, conf = pro.make_Analysis_config_from_yaml(args.config)
+    inp.check_paths(conf)
+    rebin = conf["optional"].get("fit_energy_bins", None)
+    root_dir = pt.Path(conf["data_directory"]) / conf["optional"].get("production","")
+    out_dir = pt.Path(conf["out_path"])
 
-    obs_dict = get_listed_hap_observations(conf["optional"]["runlist"],conf["optional"]["cut_conf"])
+    if "hap-hd" in conf["data_directory"]:
+        obs_dict = inp.get_listed_hap_observations(
+            conf["optional"]["runlist"], conf["optional"]["cut_conf"]
+        )
 
-    for key in obs_dict:
-        obs_objs, obs_tab = obs_dict[key]
-        ana_conf = src_ana_conf.copy()
+    if "hap-fr" in conf["data_directory"]:
+        obs_dict = inp.get_listed_hd_fr_observations(
+            conf["optional"]["runlist"], conf["optional"]["cut_conf"]
+        )
 
-        ana_conf.observations.obs_ids = [itm.obs_id for itm in obs_objs]
-        ana_conf.observations.datastore = root_dir / key / conf["optional"]["cut_conf"]
-        ana_conf.observations.required_irf = ["aeff","edisp","psf", "bkg"]
+    if "fits_export" in conf["data_directory"]:
+        obs_dict = inp.get_all_exported(root_dir)
 
-        ana_conf.datasets.type = "3d"
-        ana_conf.datasets.stacked = False
+
+    map_data = gds.Datasets()
+
+    obs_list, prop, names = inp.flatten_obs_dict(obs_dict)
+
+    flux_maps = []
+    for lst, name in zip(obs_list, names):
+        ring_map, flux_map, exs_maker = make_dataset(lst, name, src_ana_conf, src_pos, conf)
+        breakpoint()
+        map_data.append(ring_map)
+        flux_maps.append(flux_map)
+
+
+    out_loc = out_dir / "reduced"
+    out_loc.mkdir(parents=True, exist_ok=True)
+
+    map_data.write(out_loc / f"{conf['source']}_map_dataset.yaml", overwrite=True)
+
