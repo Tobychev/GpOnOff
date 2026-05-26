@@ -256,7 +256,7 @@ class RunSelectionManager:
     def _run_by_run_participation_cut(self,run_status):
         no_ct5 = lambda df: (df.participation_quality_noct5 >= self.mintel)
         with_ct5 = lambda df: ( (df.participation_quality >= (self.mintel-1)) & (df.participation_quality_ct5 == 1))
-        result = run_status["participation_quality"].copy()
+        result = run_status["participation_quality"].astype(bool, copy=True)
         rd = self.qd["run_data"]
 
         for run in run_status.index:
