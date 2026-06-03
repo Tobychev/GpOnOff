@@ -16,7 +16,6 @@ database = {"hess1":"HD_Monitor","hess2":"HD_Test"}
 def hess_database_uri(base): 
     conf = configparser.ConfigParser()
     conf.read("/nfs/us0/tobychev/.dbtoolsrc")
-    print(conf.sections())
     return 'mysql+pymysql://{user}:{password}@{host}:{port}/{database}?charset=utf8'.format(
     host     = conf["hess"]['host'],
     user     = conf["hess"]['user'],

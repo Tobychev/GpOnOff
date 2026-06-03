@@ -2,6 +2,7 @@ import hessql
 import os
 import pandas as pd
 import pickle
+import numpy as np
 
 from sqlalchemy.exc import OperationalError
 pd.set_option('display.max_rows', 500)
@@ -124,7 +125,8 @@ HESS2_SPECTRAL_CUTS = {
 
 class RunSelectionManager:
 
-    def __init__(self,runlist,quality_data,era = None, kind = "spectral"):
+    def __init__(self,runlist,quality_data,era = None, kind = "spectral",mintel = 3, ignore_atmosphere = True, require_CT5 = False):
+
         self._group_qual = ("event_header","event_header_ct5","event_header_noct5",
                             "run_tracking","run_pixel","run_pixel_ct5","run_trigger")
 
@@ -141,11 +143,13 @@ class RunSelectionManager:
         else:
             raise NotImplemented("f{kind} kind of cuts are not implemted yet")
 
+        self.set_acceptance_critera(mintel, ignore_atmosphere, require_CT5 )
+
         self.qd = {}
         for key in quality_data:
             self.qd[key] = quality_data[key].copy()
 
-        self.set_acceptance_critera()
+
         self.runlist = runlist
         self.reject_reasons = []
         self.unrejected = []
@@ -253,6 +257,11 @@ class RunSelectionManager:
         if ignore_atmosphere:
              self.accept.pop("atmosphere_quality",None)
 
+    def write_unrejected(self,list_path_name):
+        print(f"Writing {len(self.unrejected)} runs to file {list_path_name}")
+        with open(list_path_name,"w") as fil:
+            fil.writelines([f"{str(runid)}\n" for runid in sorted(self.unrejected)])
+
     def _run_by_run_participation_cut(self,run_status):
         no_ct5 = lambda df: (df.participation_quality_noct5 >= self.mintel)
         with_ct5 = lambda df: ( (df.participation_quality >= (self.mintel-1)) & (df.participation_quality_ct5 == 1))
@@ -303,15 +312,27 @@ class RunSelectionManager:
             tab_name = self._make_quality_name(key)
             dat_name = self._make_data_name(key)
             if key in self._group_qual:
+                # Evaluate per-telescope cut and insert an indicator for each telescope
+                # found. Then aggregate to find the per-run total quality
                 if not tab_name in self.qd[dat_name].columns:
                     self.qd[dat_name].insert(2,tab_name,cuts[key](self.qd[dat_name]))
-                selection[key] = self.qd[dat_name].groupby("Run")[tab_name].agg(sum)
-
+                grouped = self.qd[dat_name].groupby("Run")[tab_name]
+                selection[key] = grouped.agg(sum)
+                # In additions, if there were not enough telescopes present to 
+                # satisfy the condition, mark this with NaN so it is not counted
+                # like the run was cut because it was out of range
+                avail = grouped.count() >= self.mintel
+                selection[key][np.invert(avail)] = np.nan
             elif key == "run_data":
                 if not tab_name in self.qd[dat_name].columns:
                     self.qd[dat_name].insert(2,tab_name,cuts[key](self.qd[dat_name]))
-                selection[key] = self.qd[dat_name][["Run",tab_name]].copy()
-                selection[key].set_index("Run",inplace=True)
+                qual_tab = self.qd[dat_name][["Run",tab_name]].copy()
+                qual_tab.set_index("Run",inplace=True)
+                # Set rows that failed due to missing telescopes to nan
+                avail = self.qd[dat_name]["Number_Of_Telescopes"] < self.mintel
+                avail = avail.to_frame()
+                qual_tab[avail.fillna(True)]
+                selection[key] = qual_tab
 
             elif key == "run_atmosphere":
                 if not tab_name in self.qd[dat_name].columns:
