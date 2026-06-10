@@ -2,6 +2,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from astropy.coordinates import SkyCoord
 from astropy.table import Table, join, unique
+from astropy.time import Time
 from gammapy.data import DataStore, get_irfs_features
 from gammapy.makers import SafeMaskMaker
 from gammapy.maps import WcsGeom
