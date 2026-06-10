@@ -98,6 +98,48 @@ def fetch_irf_info(run_ids, src_pos, e_ref, store):
     return obs_tab
 
 
+def get_time_groups(obs_tab):
+    refi = obs_tab.meta["MJDREFI"]
+    reff = obs_tab.meta["MJDREFF"]
+    ref_t = Time(refi + reff, format="mjd")
+
+    obs_tab["contigious"] = np.floor(
+        obs_tab["TSTOP"] / (50 * u.min.to("s")), dtype=np.int32, casting="unsafe"
+    )
+    obs_tab["day"] = np.floor(
+        obs_tab["TSTOP"] / (1 * u.day.to("s")), dtype=np.int32, casting="unsafe"
+    )
+    obs_tab["week"] = np.floor(
+        obs_tab["TSTOP"] / (1 * u.week.to("s")), dtype=np.int32, casting="unsafe"
+    )
+
+    contig = obs_tab.group_by("contigious")
+    short_times = []
+    for group in contig.groups:
+        tsta = group["TSTART"][0] * u.s.to("day") + ref_t
+        tsto = group["TSTOP"][-1] * u.s.to("day") + ref_t
+
+        short_times.append(Time([tsta, tsto]))
+
+    contig = obs_tab.group_by("day")
+    day_times = []
+    for group in contig.groups:
+        tsta = group["TSTART"][0] * u.s.to("day") + ref_t
+        tsto = group["TSTOP"][-1] * u.s.to("day") + ref_t
+
+        day_times.append(Time([tsta, tsto]))
+
+    contig = obs_tab.group_by("week")
+    week_times = []
+    for group in contig.groups:
+        tsta = group["TSTART"][0] * u.s.to("day") + ref_t
+        tsto = group["TSTOP"][-1] * u.s.to("day") + ref_t
+
+        week_times.append(Time([tsta, tsto]))
+
+    return {"contigious": short_times, "daily": day_times, "weekly": week_times}
+
+
 def make_muon_zenith_plot(obs_table):
     fig, ax = plt.subplots()
     zen = obs_tab["ZEN_PNT"]
