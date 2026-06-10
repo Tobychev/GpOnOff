@@ -1,5 +1,6 @@
 import matplotlib.pyplot as plt
 import numpy as np
+import astropy.units as u
 from astropy.coordinates import SkyCoord
 from astropy.table import Table, join, unique
 from astropy.time import Time
