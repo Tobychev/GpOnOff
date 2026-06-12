@@ -95,7 +95,7 @@ def fetch_irf_info(run_ids, src_pos, e_ref, store):
     return obs_tab
 
 
-def get_time_groups(obs_tab):
+def get_time_groups(obs_tab, long_period=False):
     refi = obs_tab.meta["MJDREFI"]
     reff = obs_tab.meta["MJDREFF"]
     ref_t = Time(refi + reff, format="mjd")
@@ -108,6 +108,12 @@ def get_time_groups(obs_tab):
     )
     obs_tab["week"] = np.floor(
         obs_tab["TSTOP"] / (1 * u.week.to("s")), dtype=np.int32, casting="unsafe"
+    )
+    obs_tab["quarter"] = np.floor(
+        obs_tab["TSTOP"] / (13 * u.week.to("s")), dtype=np.int32, casting="unsafe"
+    )
+    obs_tab["year"] = np.floor(
+        obs_tab["TSTOP"] / (1 * u.year.to("s")), dtype=np.int32, casting="unsafe"
     )
 
     contig = obs_tab.group_by("contigious")
@@ -134,7 +140,28 @@ def get_time_groups(obs_tab):
 
         week_times.append(Time([tsta, tsto]))
 
-    return {"contigious": short_times, "daily": day_times, "weekly": week_times}
+    lists = {"contigious": short_times, "daily": day_times, "weekly": week_times}
+
+    if long_period:
+        contig = obs_tab.group_by("quarter")
+        quarter_times = []
+        for group in contig.groups:
+            tsta = group["TSTART"][0] * u.s.to("day") + ref_t
+            tsto = group["TSTOP"][-1] * u.s.to("day") + ref_t
+
+            quarter_times.append(Time([tsta, tsto]))
+
+        contig = obs_tab.group_by("year")
+        year_times = []
+        for group in contig.groups:
+            tsta = group["TSTART"][0] * u.s.to("day") + ref_t
+            tsto = group["TSTOP"][-1] * u.s.to("day") + ref_t
+
+            year_times.append(Time([tsta, tsto]))
+        lists["quarterly"] = quarter_times
+        lists["yearly"] = year_times
+
+    return lists
 
 
 def make_muon_zenith_plot(obs_table):
